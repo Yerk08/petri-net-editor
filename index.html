@@ -3,87 +3,249 @@
 
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f3efe6">
     <link rel="manifest" href="./client/manifest.json">
-    <title>Редактор Сетей Петри</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231c1710'/%3E%3Cg fill='none' stroke='%23f8f4eb' stroke-width='2'%3E%3Ccircle cx='10' cy='16' r='4.5'/%3E%3Crect x='19' y='10' width='5' height='12' rx='1'/%3E%3Cpath d='M14.5 16h4.5'/%3E%3C/g%3E%3C/svg%3E">
+    <title>Petri Lab — редактор сетей Петри</title>
     <link rel="stylesheet" href="./client/styles.css">
 </head>
 
 <body>
 
-    <!-- СЛЕВА: Меню управления -->
-    <div id="left-menu">
-        <h3>Инструменты</h3>
-        <button id="btn-select" class="active" onclick="setMode('select')">🖐️ Выделение / Движение</button>
-
-        <button id="btn-simulation" onclick="setMode('simulation')">▶️ Режим Симуляции</button>
-        <button id="btn-reset-sim" onclick="resetSimulation()"
-            style="display:none; background: #f8d7da; color: #721c24;">🔄 Сбросить к начальной</button>
-        <button id="btn-apply-sim" onclick="applySimulationState()"
-            style="display:none; background: #d4edda; color: #155724;">✅ Утвердить текущую разметку</button>
-
-        <div id="btn-undo-redo-sim" style="display:none; gap: 8px; width: 100%;">
-            <button id="btn-undo-sim" onclick="undoTransition()"
-                style="flex: 1; background: #fff3cd; color: #856404;">↩️ Назад</button>
-            <button id="btn-redo-sim" onclick="redoTransition()"
-                style="flex: 1; background: #e7eeff; color: #383d41;">↪️ Вперед</button>
+    <!-- СВЕРХУ: Шапка -->
+    <header id="topbar">
+        <div class="brand">
+            <div class="logo" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="4.8" cy="9" r="3.1"/>
+                    <rect x="11.2" y="5.6" width="4" height="6.8" rx=".8"/>
+                    <path d="M7.9 9h3.3"/>
+                </svg>
+            </div>
+            <div class="brand-text">
+                <span class="brand-name">Petri Lab</span>
+                <span class="brand-sub">редактор сетей петри</span>
+            </div>
         </div>
 
-        <button id="btn-place" onclick="setMode('place')">⚪ Позиция (P)</button>
-        <button id="btn-transition" onclick="setMode('transition')">⬛ Переход (T)</button>
-        <button id="btn-arc" onclick="setMode('arc')">➡️ Дуга (→)</button>
-        <button id="btn-token" onclick="setMode('token')">⚫ Фишка (+1)</button>
-        <button id="btn-comment" onclick="setMode('comment')">📝 Комментарий (Текст)</button>
+        <div class="top-divider"></div>
 
-        <div class="section-title">Фильтр цветов</div>
+        <div class="file-chip">
+            <span class="file-dot"></span>
+            <span class="file-name">локальная сеть</span>
+            <span class="file-state">автосохранение</span>
+        </div>
+
+        <div class="top-readout" title="Текущий режим">
+            <span class="mode-dot"></span>
+            <span id="mode-label">Редактор</span>
+        </div>
+
+        <div class="top-actions">
+            <button id="mobile-inspector-btn" class="btn ghost mobile-only" onclick="toggleInspector()"
+                    title="Свойства объекта">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+                     stroke-width="1.4" aria-hidden="true">
+                    <rect x="2" y="2.5" width="12" height="11" rx="1.5"/>
+                    <path d="M5 6h6M5 9h4"/>
+                </svg>
+                <span>Свойства</span>
+            </button>
+            <button id="theme-btn" class="btn ghost" onclick="toggleTheme()" title="Сменить тему">
+                <svg class="theme-icon" width="13" height="13" viewBox="0 0 16 16" fill="none"
+                     stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+                    <circle cx="8" cy="8" r="5.2"/>
+                    <path d="M8 1.2v2M8 12.8v2M1.2 8h2M12.8 8h2"/>
+                </svg>
+                <span class="theme-label">Тёмная тема</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- СЛЕВА: Инструменты -->
+    <aside id="left-menu">
+        <div id="tool-dock">
+        <div class="section-head"><span>Инструменты</span><span class="hint">клавиши</span></div>
+
+        <div class="tool-grid">
+            <button id="btn-select" class="tool active" data-label="Редактор" onclick="setMode('select')"
+                    title="Выделение и перемещение (R)">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4 3 6.5 14 2-5.5L18 9.5Z"/></svg>
+                <span class="tool-name">Выделение</span><kbd>R</kbd>
+            </button>
+
+            <button id="btn-simulation" class="tool" data-label="Симуляция" onclick="setMode('simulation')"
+                    title="Режим симуляции (S)">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4.5v11l9-5.5Z"/></svg>
+                <span class="tool-name">Симуляция</span><kbd>S</kbd>
+            </button>
+
+            <button id="btn-place" class="tool" data-label="Позиция" onclick="setMode('place')"
+                    title="Добавить позицию (P)">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.4"/>
+                    <circle cx="10" cy="10" r="1.5" fill="currentColor" stroke="none"/></svg>
+                <span class="tool-name">Позиция</span><kbd>P</kbd>
+            </button>
+
+            <button id="btn-transition" class="tool" data-label="Переход" onclick="setMode('transition')"
+                    title="Добавить переход (T)">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="6.5" y="3.5" width="7" height="13" rx="1"/></svg>
+                <span class="tool-name">Переход</span><kbd>T</kbd>
+            </button>
+
+            <button id="btn-arc" class="tool" data-label="Дуга" onclick="setMode('arc')"
+                    title="Добавить дугу (A)">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 16C3 9 8 5 15 4.5"/>
+                    <path d="m12 2.6 3.2 1.8-1.4 3.4"/></svg>
+                <span class="tool-name">Дуга</span><kbd>A</kbd>
+            </button>
+
+            <button id="btn-token" class="tool" data-label="Фишка" onclick="setMode('token')"
+                    title="Добавить фишку (O)">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.4"/>
+                    <circle cx="10" cy="10" r="2.7" fill="currentColor" stroke="none"/></svg>
+                <span class="tool-name">Фишка</span><kbd>O</kbd>
+            </button>
+
+            <button id="btn-comment" class="tool wide" data-label="Комментарий" onclick="setMode('comment')"
+                    title="Добавить комментарий (U)">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4.5h14v9H9l-4 3v-3H3z"/></svg>
+                <span class="tool-name">Комментарий</span><kbd>U</kbd>
+            </button>
+        </div>
+
+        <button id="mobile-more" class="mobile-only" onclick="toggleMobileMenu()" title="Фильтры, файлы и симуляция">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+                 aria-hidden="true"><circle cx="3" cy="8" r="1.2" fill="currentColor" stroke="none"/>
+                <circle cx="8" cy="8" r="1.2" fill="currentColor" stroke="none"/>
+                <circle cx="13" cy="8" r="1.2" fill="currentColor" stroke="none"/></svg>
+            <span>Ещё</span>
+        </button>
+        </div>
+
+        <div id="left-extra">
+        <div class="sheet-head">
+            <span>Настройки</span>
+            <button onclick="closeMobilePanels()" title="Закрыть">×</button>
+        </div>
+        <div id="sim-panel">
+            <div class="section-head"><span>Ход симуляции</span><span class="hint">live</span></div>
+            <div class="sim-actions">
+                <button id="btn-reset-sim" class="sim-btn reset" onclick="resetSimulation()">Сбросить</button>
+                <button id="btn-apply-sim" class="sim-btn apply" onclick="applySimulationState()">Утвердить</button>
+            </div>
+            <div id="btn-undo-redo-sim">
+                <button id="btn-undo-sim" class="sim-btn" onclick="undoTransition()">↩ Назад</button>
+                <button id="btn-redo-sim" class="sim-btn" onclick="redoTransition()">Вперёд ↪</button>
+            </div>
+            <button id="btn-exit-sim" class="sim-btn exit" onclick="exitSimulation()"
+                    title="Сбросить разметку и вернуться в редактор">Выйти из симуляции</button>
+            <div class="sim-note">Инструменты можно переключать — разметка сохранится.</div>
+        </div>
+
+        <div class="section-head"><span>Фильтр цветов</span><span class="hint">слои</span></div>
         <div class="color-filter-box">
-            <label><input type="checkbox" id="chk-filter-black" checked onchange="toggleFilterColor('black')">⚫</label>
-            <label><input type="checkbox" id="chk-filter-red" checked onchange="toggleFilterColor('red')">🔴</label>
-            <label><input type="checkbox" id="chk-filter-blue" checked onchange="toggleFilterColor('blue')">🔵</label>
-            <label><input type="checkbox" id="chk-filter-green" checked onchange="toggleFilterColor('green')">🟢</label>
+            <label><input type="checkbox" id="chk-filter-black" checked onchange="toggleFilterColor('black')">
+                <i class="cdot black"></i>Чёрный</label>
+            <label><input type="checkbox" id="chk-filter-red" checked onchange="toggleFilterColor('red')">
+                <i class="cdot red"></i>Красный</label>
+            <label><input type="checkbox" id="chk-filter-blue" checked onchange="toggleFilterColor('blue')">
+                <i class="cdot blue"></i>Синий</label>
+            <label><input type="checkbox" id="chk-filter-green" checked onchange="toggleFilterColor('green')">
+                <i class="cdot green"></i>Зелёный</label>
         </div>
 
-        <div class="section-title">Управление холстом</div>
-        <button onclick="clearPetriNet()" class="btn-danger"
-            style="background: #fff0f0; color: #d93838; border-color: #f5c2c2;">🧹 Очистить всё</button>
-        <div style="display: flex; gap: 8px; width: 100%;">
-            <button onclick="exportToSVG()" style="flex: 1; background: #fffbe6; border-color: #ffe58f;">🎨 SVG</button>
-            <button onclick="exportToPDF()" style="flex: 1; background: #fffbe6; border-color: #ffe58f;">📄 Печать</button>
+        <div class="section-head"><span>Холст</span></div>
+        <button onclick="clearPetriNet()" class="btn danger wide">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"
+                 aria-hidden="true"><path d="M3 4.5h10M6 4.5V3h4v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5"/></svg>
+            Очистить всё
+        </button>
+        <div class="action-grid">
+            <button onclick="exportToSVG()" class="btn">SVG</button>
+            <button onclick="exportToPDF()" class="btn">Печать</button>
         </div>
-        <button onclick="toggleTheme()" id="theme-btn"
-            style="background: #f5f5f5; color: #262626; border-color: #d9d9d9;">🌓 Сменить тему</button>
 
-        <div class="section-title">Файлы</div>
-        <button onclick="exportToFile()" style="background: #eef7ff; border-color: #bce0ff;">💾 Экспорт в JSON</button>
-        <button onclick="document.getElementById('import-file-input').click()"
-            style="background: #f6fff5; border-color: #cfffcc;">📂 Импорт из JSON</button>
-        <input type="file" id="import-file-input" accept=".json" onchange="importFromFile(event)"
-            style="display: none;">
-
-    </div>
+        <div class="section-head"><span>Файлы</span><span class="hint">json</span></div>
+        <button onclick="exportToFile()" class="btn wide">Экспорт сети</button>
+        <button onclick="document.getElementById('import-file-input').click()" class="btn wide">Импорт сети</button>
+        <input type="file" id="import-file-input" accept=".json" onchange="importFromFile(event)">
+        <div class="panel-note">Сеть хранится в браузере и работает офлайн.</div>
+        <button class="mobile-done" onclick="closeMobilePanels()">Готово</button>
+        </div>
+    </aside>
 
     <!-- ПОЦЕНТРУ: Графический холст -->
     <div id="canvas-container">
+        <div class="canvas-meta" aria-hidden="true">
+            <span class="crumb"><b>Сеть</b><i>/</i>основной слой</span>
+        </div>
+        <div class="canvas-badge" aria-hidden="true">Ctrl + колесо — масштаб</div>
+
         <svg id="petri-svg" onpointerdown="onCanvasMouseDown(event)">
             <g id="viewport">
                 <defs>
                     <marker id="arrow" viewBox="0 0 10 10" refX="22" refY="5" markerWidth="6" markerHeight="6"
-                        orient="auto-start-reverse">
-                        <path d="M 0 1 L 10 5 L 0 9 z" fill="#555" />
+                            orient="auto-start-reverse">
+                        <path d="M 0 1 L 10 5 L 0 9 z" fill="#5a5145"/>
                     </marker>
                 </defs>
                 <g id="arcs-group"></g>
                 <g id="nodes-group"></g>
             </g>
         </svg>
+
+        <div class="canvas-hint" aria-hidden="true">Перетаскивание — панорама</div>
+        <button class="canvas-fit" onclick="fitToView()" title="Вписать сеть в экран">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+                <path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4"/>
+            </svg>
+            Вписать
+        </button>
     </div>
 
     <!-- СПРАВА: Свойства выбранного объекта -->
-    <div id="right-menu">
-        <h3>Свойства</h3>
-        <div id="properties-panel">
-            <p style="color:#888;">Выберите объект для редактирования</p>
+    <aside id="right-menu">
+        <div class="section-head inspector-head">
+            <span>Инспектор</span>
+            <div class="head-right">
+                <span class="hint">объект</span>
+                <button class="inspector-close mobile-only" onclick="closeMobilePanels()" title="Закрыть">×</button>
+            </div>
         </div>
-    </div>
+        <div id="properties-panel">
+            <div class="prop-empty">
+                <div class="empty-mark" aria-hidden="true">
+                    <svg width="34" height="34" viewBox="0 0 34 34" fill="none" stroke="currentColor"
+                         stroke-width="1.2">
+                        <circle cx="11" cy="17" r="7"/>
+                        <rect x="23" y="11" width="7" height="12" rx="1.5"/>
+                        <path d="M18 17h5"/>
+                    </svg>
+                </div>
+                <p>Выберите объект на холсте</p>
+                <span>Свойства появятся здесь</span>
+                <div class="empty-hints">
+                    <span>P — позиция</span><span>T — переход</span><span>A — дуга</span>
+                </div>
+            </div>
+        </div>
+        <div class="inspector-foot">
+            <span>Delete — удалить</span>
+            <span>Ctrl + C / V</span>
+        </div>
+    </aside>
+
+    <!-- СНИЗУ: Статус -->
+    <footer id="statusbar">
+        <div class="seg"><span class="status-dot"></span>готово</div>
+        <div class="seg" id="status-counts">0 поз. · 0 пер. · 0 дуг</div>
+        <div class="seg mid">перетаскивание — панорама · Ctrl + колесо — масштаб</div>
+        <div class="seg">офлайн · local-first</div>
+    </footer>
+
+    <div id="mobile-backdrop" onclick="closeMobilePanels()"></div>
 
     <script type="module" src="./client/editor.js"></script>
     <script>

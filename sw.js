@@ -1,4 +1,4 @@
-const CACHE_NAME = 'petri-editor-v1.26'; // МЕНЯЙТЕ ВЕРСИЮ ДЛЯ ОБНОВЛЕНИЯ (v2, v3...)
+const CACHE_NAME = 'petri-editor-v1.35'; // МЕНЯЙТЕ ВЕРСИЮ ДЛЯ ОБНОВЛЕНИЯ (v2, v3...)
 const ASSETS = [
   './',
   './index.html',
@@ -38,15 +38,25 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Перехват запросов: отдаем файлы из кэша, если сети нет
+// Перехват запросов: онлайн — свежие файлы и обновление кэша, офлайн — из кэша
 self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
+
+  const requestUrl = new URL(event.request.url);
+  if (requestUrl.origin !== self.location.origin) return;
+
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      return fetch(event.request);
-    })
+    fetch(event.request)
+      .then((response) => {
+        if (response && response.status === 200) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, copy);
+          });
+        }
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
 

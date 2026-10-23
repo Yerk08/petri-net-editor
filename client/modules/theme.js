@@ -5,19 +5,28 @@ export function toggleTheme() {
     body.classList.toggle('dark-theme');
 
     const isDark = body.classList.contains('dark-theme');
-    if (isDark) {
-        btn.innerHTML = '☀️ Светлая тема';
-    } else {
-        btn.innerHTML = '🌙 Тёмная тема';
-    }
+    updateThemeButton(btn, isDark);
 
     localStorage.setItem('inverted', isDark);
 }
 
+function updateThemeButton(btn, isDark) {
+    if (!btn) return;
+
+    const label = btn.querySelector('.theme-label');
+    if (label) {
+        label.textContent = isDark ? 'Светлая тема' : 'Тёмная тема';
+    } else {
+        // Запасной вариант для старой разметки
+        btn.innerHTML = isDark ? '☀️ Светлая тема' : '🌙 Тёмная тема';
+    }
+
+    btn.setAttribute('aria-label', isDark ? 'Включить светлую тему' : 'Включить тёмную тему');
+}
+
 function applyDarkTheme() {
     document.body.classList.add('dark-theme');
-    const btn = document.getElementById('theme-btn');
-    if (btn) btn.innerHTML = '☀️ Светлая тема';
+    updateThemeButton(document.getElementById('theme-btn'), true);
 }
 
 export function loadToggleTheme() {

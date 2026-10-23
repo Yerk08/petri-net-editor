@@ -54,16 +54,10 @@ export function replaceState(newState) {
 
 // --- УПРАВЛЕНИЕ РЕЖИМАМИ ---
 export function setMode(mode) {
-    // Автоматический сброс к начальной разметке при выходе из симуляции
-    if (currentMode === 'simulation' && mode !== 'simulation') {
-        resetSimulation();
-        simulation.isSimMode = false;
-        selectObject(null);
-    }
-
-    // Вход в режим симуляции
+    // Вход в симуляцию: начальную разметку фиксируем только при первом входе.
+    // Если вернуться из правки графа, текущая разметка и история сохраняются.
     if (mode === 'simulation') {
-        if (currentMode !== 'simulation') {
+        if (!simulation.isSimMode) {
             state.places.forEach(p => p.initialTokens = p.tokens);
             simulation.isSimMode = true;
         }
@@ -76,21 +70,27 @@ export function setMode(mode) {
     const btn = document.getElementById(`btn-${mode}`);
     if (btn) btn.classList.add('active');
 
-    // Поддержка фокуса на симуляции
-    const isSim = currentMode === 'simulation' || simulation.isSimMode;
-    if (isSim && currentMode !== 'simulation') {
-        currentMode = 'simulation';
-        if (btn) btn.classList.remove('active');
-        document.getElementById('btn-simulation').classList.add('active');
-    }
+    // Пока симуляция активна, ее панель остается доступной,
+    // даже если выбран инструмент редактирования.
+    const isSim = simulation.isSimMode || currentMode === 'simulation';
 
     document.getElementById('btn-reset-sim').style.display = isSim ? 'block' : 'none';
     document.getElementById('btn-apply-sim').style.display = isSim ? 'block' : 'none';
     document.getElementById('btn-undo-redo-sim').style.display = isSim ? 'flex' : 'none';
     document.body.classList.toggle('mode-simulation', isSim);
+    document.body.classList.toggle('mode-sim-edit', isSim && currentMode !== 'simulation');
 
     arcSourceId = null;
     render();
+}
+
+// Полный выход из симуляции: вернуть начальную разметку и обычный редактор
+export function exitSimulation() {
+    simulation.isSimMode = false;
+    currentMode = 'select';
+    setMode('select');
+    resetSimulation();
+    selectObject(null);
 }
 
 

@@ -1,0 +1,156 @@
+{
+  "places": [
+    {
+      "uuid": "p_orders",
+      "name": "Новый заказ",
+      "x": 120,
+      "y": 330,
+      "tokens": 3,
+      "initialTokens": 3
+    },
+    {
+      "uuid": "p_paid",
+      "name": "Оплачен",
+      "x": 330,
+      "y": 230,
+      "tokens": 0,
+      "initialTokens": 0
+    },
+    {
+      "uuid": "p_stock",
+      "name": "На складе",
+      "x": 330,
+      "y": 450,
+      "tokens": 2,
+      "initialTokens": 2
+    },
+    {
+      "uuid": "p_ready",
+      "name": "Собран",
+      "x": 550,
+      "y": 330,
+      "tokens": 0,
+      "initialTokens": 0
+    },
+    {
+      "uuid": "p_done",
+      "name": "Отправлен",
+      "x": 770,
+      "y": 330,
+      "tokens": 0,
+      "initialTokens": 0
+    },
+    {
+      "uuid": "p_cancelled",
+      "name": "Отменён",
+      "x": 550,
+      "y": 130,
+      "tokens": 0,
+      "initialTokens": 0
+    }
+  ],
+  "transitions": [
+    {
+      "uuid": "t_pay",
+      "name": "Оплата",
+      "x": 225,
+      "y": 330
+    },
+    {
+      "uuid": "t_pack",
+      "name": "Сборка",
+      "x": 440,
+      "y": 330
+    },
+    {
+      "uuid": "t_ship",
+      "name": "Отгрузка",
+      "x": 660,
+      "y": 330
+    },
+    {
+      "uuid": "t_cancel",
+      "name": "Отмена",
+      "x": 440,
+      "y": 130,
+      "color": "red"
+    }
+  ],
+  "arcs": [
+    {
+      "uuid": "p_orders-t_pay",
+      "sourceId": "p_orders",
+      "targetId": "t_pay",
+      "weight": 1
+    },
+    {
+      "uuid": "t_pay-p_paid",
+      "sourceId": "t_pay",
+      "targetId": "p_paid",
+      "weight": 1
+    },
+    {
+      "uuid": "p_paid-t_pack",
+      "sourceId": "p_paid",
+      "targetId": "t_pack",
+      "weight": 1
+    },
+    {
+      "uuid": "p_stock-t_pack",
+      "sourceId": "p_stock",
+      "targetId": "t_pack",
+      "weight": 2
+    },
+    {
+      "uuid": "t_pack-p_ready",
+      "sourceId": "t_pack",
+      "targetId": "p_ready",
+      "weight": 1
+    },
+    {
+      "uuid": "p_ready-t_ship",
+      "sourceId": "p_ready",
+      "targetId": "t_ship",
+      "weight": 1
+    },
+    {
+      "uuid": "t_ship-p_done",
+      "sourceId": "t_ship",
+      "targetId": "p_done",
+      "weight": 1
+    },
+    {
+      "uuid": "p_paid-t_cancel",
+      "sourceId": "p_paid",
+      "targetId": "t_cancel",
+      "weight": 1,
+      "color": "red"
+    },
+    {
+      "uuid": "t_cancel-p_cancelled",
+      "sourceId": "t_cancel",
+      "targetId": "p_cancelled",
+      "weight": 1,
+      "color": "red"
+    }
+  ],
+  "comments": [
+    {
+      "uuid": "comment_m0",
+      "text": "M₀ = (3, 0, 2, 0, 0, 0)\nКрасная ветка — отмена заказа.",
+      "x": 210,
+      "y": 620
+    },
+    {
+      "uuid": "comment_hint",
+      "text": "Попробуй: Оплата → Сборка → Отгрузка.\nВес дуги со склада — 2 фишки.",
+      "x": 620,
+      "y": 620
+    }
+  ],
+  "counters": {
+    "P": 6,
+    "T": 4,
+    "C": 2
+  }
+}

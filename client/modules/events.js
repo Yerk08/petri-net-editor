@@ -1,6 +1,6 @@
 import {selectObject} from '../editor.js';
 
-import {render} from './render.js';
+import {render, updatePropertyWhileSimulation} from './render.js';
 import {arcSourceId, currentMode, deleteObject, dragTarget, findComment, findNode, fireTransition, getState, selectedId, setArcSourceId, setDragTarget, setSelectedId} from './state.js';
 import {importFromFile} from './storage.js';
 
@@ -149,6 +149,8 @@ export function onNodeMouseDown(e, id) {
         }
     }
     render();
+    // Если инспектор открыт на этой позиции, синхронизируем счетчик фишек
+    updatePropertyWhileSimulation();
 }
 
 export function onNodeMouseMove(e) {
@@ -192,6 +194,50 @@ function applyTransform() {
     if (viewport) {
         viewport.setAttribute('transform', `translate(${translateX}, ${translateY}) scale(${scale})`);
     }
+}
+
+// Вписать все элементы сети в видимую область холста
+export function fitToView(padding = 48) {
+    const state = getState();
+    const nodes = [
+        ...(state.places || []),
+        ...(state.transitions || [])
+    ];
+
+    if (!nodes.length) return;
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+    const include = (x1, y1, x2, y2) => {
+        minX = Math.min(minX, x1);
+        minY = Math.min(minY, y1);
+        maxX = Math.max(maxX, x2);
+        maxY = Math.max(maxY, y2);
+    };
+
+    (state.places || []).forEach(p => include(p.x - 26, p.y - 62, p.x + 26, p.y + 30));
+    (state.transitions || []).forEach(t => include(t.x - 20, t.y - 62, t.x + 20, t.y + 34));
+
+    // Запас под изгибы дуг и подписи. Комментарии не учитываем,
+    // чтобы один далеко отставленный текст не уменьшал всю схему.
+    minX -= 12;
+    minY -= 12;
+    maxX += 12;
+    maxY += 12;
+
+    const rect = svg.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+
+    const availableW = Math.max(80, rect.width - padding * 2);
+    const availableH = Math.max(80, rect.height - padding * 2);
+    const contentW = Math.max(1, maxX - minX);
+    const contentH = Math.max(1, maxY - minY);
+
+    scale = Math.max(0.2, Math.min(1.6, Math.min(availableW / contentW, availableH / contentH)));
+    translateX = (rect.width - (minX + maxX) * scale) / 2;
+    translateY = (rect.height - (minY + maxY) * scale) / 2;
+
+    applyTransform();
 }
 
 svg.addEventListener('wheel', function(e) {
