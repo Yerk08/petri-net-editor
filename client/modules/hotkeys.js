@@ -149,21 +149,43 @@ export function initHotKeys() {
             return;
         }
 
-        // --- 4. ПЕРЕКЛЮЧЕНИЕ РЕЖИМОВ (Цифры 1 - 7 под кнопки меню) ---
+        // --- 4. ПЕРЕКЛЮЧЕНИЕ РЕЖИМОВ ---
         // Соответствует порядку: Select, Simulation, Place, Transition, Arc, Token, Comment
         const modesMapping = {
             'r': 'select',
             's': 'simulation',
-            'p': 'place',
+            'd': 'place',
             't': 'transition',
             'a': 'arc',
-            'o': 'token',
-            'u': 'comment'
+            'e': 'token',
+            'w': 'comment'
         };
 
         if (modesMapping[e.key]) {
             e.preventDefault();
             window.setMode(modesMapping[e.key]);
+        }
+
+        // --- 5. ПЕРЕКЛЮЧЕНИЕ ФИЛЬТРОВ ЦВЕТОВ ---
+        // Соответствует порядку: 1 -> black, 2 -> red, 3 -> blue, 4 -> green
+        const colorsMapping = {'1': 'black', '2': 'red', '3': 'blue', '4': 'green'};
+
+        if (colorsMapping[e.key]) {
+            e.preventDefault();
+            const color = colorsMapping[e.key];
+            if (isCtrl) {
+                if (selectedId) {
+                    window.updateElementColor(selectedId, color);
+                    render();
+                    window.selectObject(selectedId);
+                }
+            } else {
+                const checkbox = document.getElementById(`chk-filter-${color}`);
+                if (checkbox) {
+                    checkbox.checked = !checkbox.checked;
+                    window.toggleFilterColor(color);
+                }
+            }
         }
     });
 }

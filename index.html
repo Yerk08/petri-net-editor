@@ -14,9 +14,9 @@
     <!-- СЛЕВА: Меню управления -->
     <div id="left-menu">
         <h3>Инструменты</h3>
-        <button id="btn-select" class="active" onclick="setMode('select')">🖐️ Выделение / Движение</button>
+        <button id="btn-select" class="active" onclick="setMode('select')">🖱️ Курсор <kbd>R</kbd></button>
 
-        <button id="btn-simulation" onclick="setMode('simulation')">▶️ Режим Симуляции</button>
+        <button id="btn-simulation" onclick="setMode('simulation')">▶️ Симуляция <kbd>S</kbd></button>
         <button id="btn-reset-sim" onclick="resetSimulation()"
             style="display:none; background: #f8d7da; color: #721c24;">🔄 Сбросить к начальной</button>
         <button id="btn-apply-sim" onclick="applySimulationState()"
@@ -29,18 +29,18 @@
                 style="flex: 1; background: #e7eeff; color: #383d41;">↪️ Вперед</button>
         </div>
 
-        <button id="btn-place" onclick="setMode('place')">⚪ Позиция (P)</button>
-        <button id="btn-transition" onclick="setMode('transition')">⬛ Переход (T)</button>
-        <button id="btn-arc" onclick="setMode('arc')">➡️ Дуга (→)</button>
-        <button id="btn-token" onclick="setMode('token')">⚫ Фишка (+1)</button>
-        <button id="btn-comment" onclick="setMode('comment')">📝 Комментарий (Текст)</button>
+        <button id="btn-place" onclick="setMode('place')">⚪ Позиция <kbd>D</kbd></button>
+        <button id="btn-transition" onclick="setMode('transition')">⬛ Переход <kbd>T</kbd></button>
+        <button id="btn-arc" onclick="setMode('arc')">➡️ Дуга <kbd>A</kbd></button>
+        <button id="btn-token" onclick="setMode('token')">⚫ Фишка <kbd>E</kbd></button>
+        <button id="btn-comment" onclick="setMode('comment')">📝 Текст <kbd>W</kbd></button>
 
         <div class="section-title">Фильтр цветов</div>
         <div class="color-filter-box">
-            <label><input type="checkbox" id="chk-filter-black" checked onchange="toggleFilterColor('black')">⚫</label>
-            <label><input type="checkbox" id="chk-filter-red" checked onchange="toggleFilterColor('red')">🔴</label>
-            <label><input type="checkbox" id="chk-filter-blue" checked onchange="toggleFilterColor('blue')">🔵</label>
-            <label><input type="checkbox" id="chk-filter-green" checked onchange="toggleFilterColor('green')">🟢</label>
+            <label><input type="checkbox" id="chk-filter-black" checked onchange="toggleFilterColor('black')">⚫ <kbd>1</kbd></label>
+            <label><input type="checkbox" id="chk-filter-red" checked onchange="toggleFilterColor('red')">🔴 <kbd>2</kbd></label>
+            <label><input type="checkbox" id="chk-filter-blue" checked onchange="toggleFilterColor('blue')">🔵 <kbd>3</kbd></label>
+            <label><input type="checkbox" id="chk-filter-green" checked onchange="toggleFilterColor('green')">🟢 <kbd>4</kbd></label>
         </div>
 
         <div class="section-title">Управление холстом</div>
@@ -48,15 +48,15 @@
             style="background: #fff0f0; color: #d93838; border-color: #f5c2c2;">🧹 Очистить всё</button>
         <div style="display: flex; gap: 8px; width: 100%;">
             <button onclick="exportToSVG()" style="flex: 1; background: #fffbe6; border-color: #ffe58f;">🎨 SVG</button>
-            <button onclick="exportToPDF()" style="flex: 1; background: #fffbe6; border-color: #ffe58f;">📄 Печать</button>
+            <button onclick="exportToPDF()" style="flex: 1; background: #fffbe6; border-color: #ffe58f;">📄 Print</button>
         </div>
         <button onclick="toggleTheme()" id="theme-btn"
             style="background: #f5f5f5; color: #262626; border-color: #d9d9d9;">🌓 Сменить тему</button>
 
         <div class="section-title">Файлы</div>
-        <button onclick="exportToFile()" style="background: #eef7ff; border-color: #bce0ff;">💾 Экспорт в JSON</button>
+        <button onclick="exportToFile()" style="background: #eef7ff; border-color: #bce0ff;">💾 Экспорт JSON</button>
         <button onclick="document.getElementById('import-file-input').click()"
-            style="background: #f6fff5; border-color: #cfffcc;">📂 Импорт из JSON</button>
+            style="background: #f6fff5; border-color: #cfffcc;">📂 Импорт JSON</button>
         <input type="file" id="import-file-input" accept=".json" onchange="importFromFile(event)"
             style="display: none;">
 

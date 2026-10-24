@@ -43,7 +43,7 @@ body.drag-active::after {
 /* ПАНЕЛИ: Добавлена умная прокрутка, если контент не влезает */
 #left-menu,
 #right-menu {
-    width: 260px;
+    width: 220px;
     max-height: 100%;
     background: #ffffff;
     padding: 15px;
@@ -64,14 +64,18 @@ body.drag-active::after {
 
 /* Кнопки и инпуты */
 button {
-    padding: 11px;
+    display: inline-flex;
+    justify-content: space-between;
+    align-items: center;
+
+    padding: 10px;
     cursor: pointer;
     border: 1px solid #aaa;
     background: #eee;
     border-radius: 4px;
     font-weight: bold;
     text-align: left;
-    font-size: 14px;
+    font-size: 16px;
     flex-shrink: 0;
     touch-action: manipulation;
 }
@@ -130,6 +134,22 @@ h3 {
 
 .btn-danger:hover {
     background: #ffcccc;
+}
+
+kbd {
+    font-family: monospace;
+    background-color: #eee;
+    border: 1px solid #b4b4b4;
+    border-radius: 3px;
+    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
+    color: #333;
+    display: inline-block;
+    font-size: 0.85em;
+    font-weight: 700;
+    line-height: 1;
+    padding: 2px 5px;
+    /* Прижимает элемент вправо, если ширина кнопки увеличится */
+    margin-left: auto;
 }
 
 /* Индикатор симуляции */
@@ -245,7 +265,9 @@ body.mode-simulation .place {
 }
 
 .color-filter-box {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(2, auto);
+
     gap: 12px;
     background: #fdfdfd;
     padding: 8px 12px;
@@ -267,6 +289,12 @@ body.mode-simulation .place {
     width: auto;
     margin: 0 3px 0 0;
     cursor: pointer;
+}
+
+.color-filter-box kbd {
+    transform: scale(0.75);
+    transform-origin: right center; 
+    display: inline-block; 
 }
 
 
