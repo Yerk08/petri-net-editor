@@ -174,6 +174,24 @@ export function fireTransition(transId, isRedoAction = false) {
     const transition = state.transitions.find(t => t.uuid === transId);
     const snapshotBefore = createTokensSnapshot();
 
+    if (transition) {
+        simulation.history.push({
+            uuid: transId,
+            name: transition.name,
+            color: transition.color || 'black',
+            tokensSnapshot: snapshotBefore
+        });
+
+        if (!isRedoAction) {
+            simulation.redoHistory = [];
+        } else {
+            redoTransition();
+            render();
+            updatePropertyWhileSimulation();
+            return;
+        }
+    }
+
     const inArcs = state.arcs.filter(a => a.targetId === transId);
     const outArcs = state.arcs.filter(a => a.sourceId === transId);
 
@@ -195,25 +213,6 @@ export function fireTransition(transId, isRedoAction = false) {
             }
         }
     });
-
-    if (transition) {
-        if (!isRedoAction) {
-            simulation.history.push({
-                uuid: transId,
-                name: transition.name,
-                color: transition.color || 'black',
-                tokensSnapshot: snapshotBefore
-            });
-            simulation.redoHistory = [];
-        } else {
-            simulation.history.push({
-                uuid: transId,
-                name: transition.name,
-                color: transition.color || 'black',
-                tokensSnapshot: snapshotBefore
-            });
-        }
-    }
 
     render();
     updatePropertyWhileSimulation();
@@ -352,19 +351,17 @@ export function undoTransition() {
 }
 
 export function redoTransition() {
-    if (simulation.redoHistory.length === 0) return;
-
     const nextAction = simulation.redoHistory.pop();
-    if (nextAction.uuid) {
-        fireTransition(nextAction.uuid, true);
-    } else {
-        simulation.history.push({
-            name: nextAction.name,
-            color: nextAction.color,
-            tokensSnapshot: createTokensSnapshot()
-        });
-        restoreTokensFromSnapshot(nextAction.tokensSnapshot);
-        render();
-        updatePropertyWhileSimulation();
-    }
+    if (!nextAction) return;
+
+    simulation.history.push({
+        uuid: nextAction.uuid,
+        name: nextAction.name,
+        color: nextAction.color,
+        tokensSnapshot: createTokensSnapshot()
+    });
+    
+    restoreTokensFromSnapshot(nextAction.tokensSnapshot);
+    render();
+    updatePropertyWhileSimulation();
 }
