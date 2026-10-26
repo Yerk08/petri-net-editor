@@ -1,3 +1,10 @@
+/**
+ * @file render.js
+ * @brief Модуль графического рендеринга сети Петри в формат SVG.
+ * @details Производит полную очистку холста и поочередную отрисовку (генерацию SVG-разметки)
+ *          всех дуг, позиций, переходов и текстовых комментариев на основе текущего состояния.
+ */
+
 import {selectObject} from '../editor.js';
 
 import {arcSourceId, currentMode, findNode, getColorDimClass, getState, isTransitionEnabled, selectedId} from './state.js';
@@ -7,7 +14,16 @@ const svg = document.getElementById('petri-svg');
 const nodesGroup = document.getElementById('nodes-group');
 const arcsGroup = document.getElementById('arcs-group');
 
-
+/**
+ * @brief Формирует многострочный блок SVG-текста с автоматическим переносом слов по ограничению
+ * длины.
+ * @param {string} text - Исходный текст для рендеринга.
+ * @param {number} x - Базовая координата X центра текста.
+ * @param {number} baseY - Базовая координата Y нижней/опорной линии текста.
+ * @param {number} [maxLength=12] - Максимальное количество символов в одной строке.
+ * @param {number} [lineHeightEm=1.2] - Коэффициент высоты строки (14px).
+ * @return {string} Валидная SVG-строка, содержащая тег `<text>` со вложенными `<tspan>`.
+ */
 function renderMultilineSVGText(text, x, baseY, maxLength = 12, lineHeightEm = 1.2) {
     if (!text) return '';
 
@@ -51,6 +67,28 @@ function renderMultilineSVGText(text, x, baseY, maxLength = 12, lineHeightEm = 1
 
 
 // --- ОТРИСОВКА В SVG ---
+/**
+ * @brief Главная функция отрисовки графического интерфейса сети Петри.
+ * @details Выполняет полную перерисовку (деструктивный innerHTML рендеринг) элементов.
+ *          Вызывается при любом изменении состояния (перетаскивание, добавление, симуляция).
+ *
+ * @warning **МЕСТО ПОВЫШЕННОЙ ВЫЧИСЛИТЕЛЬНОЙ СЛОЖНОСТИ (ОТРИСОВКА ДУГ):**
+ * Секция отрисовки дуг производит расчет изгиба кривых Безье первого порядка (`Q`).
+ * - `curveIntensity`: Если существуют встречные дуги (туда и обратно), интенсивность изгиба
+ * увеличивается до 35, чтобы линии не накладывались друг на друга.
+ * - **Расчет пересечения контура перехода:** Прямоугольный переход требует вычисления пересечения
+ * вектора дуги с границами отрезков `halfWidth=10` и `halfHeight=25`. При изменении размеров
+ * переходов в CSS обязательно синхронизируйте эти константы здесь, иначе стрелки дуг будут
+ * врезаться в прямоугольники или висеть в воздухе.
+ *
+ * @warning **ЛОГИКА HTML-КОММЕНТАРИЕВ (FOREIGN OBJECT):**
+ * Для рендеринга комментариев используется тег `<foreignObject>`, внутрь которого инжектируется
+ * HTML-блок `div`. Поскольку SVG не умеет автоматически рассчитывать высоту (`height: auto`) для
+ * HTML элементов, в конце функции применяется **двухпроходный хак**: комментарий рендерится с
+ * высотой 9999, затем через `renderedDiv.offsetHeight` замеряется его реальная высота в браузере, и
+ * атрибуты `height` для `rect` и `foreignObject` принудительно перевыставляются под реальный размер
+ * текста.
+ */
 export function render() {
     nodesGroup.innerHTML = '';
     arcsGroup.innerHTML = '';
@@ -234,16 +272,21 @@ export function render() {
     });
 }
 
+/**
+ * @brief Обновление свойств UI во время активной фазы симуляции.
+ * @details Он синхронизирует значение инпута фишек в панели свойств, если выбрана позиция,
+ * либо сбрасывает выбор объекта при кликах по переходам.
+ */
 export function updatePropertyWhileSimulation() {
-    if (selectedId) {  // Только для обновления количества фишек если выбрана позиция при
-                       // симуляции
+    if (selectedId) {
+        // Только для обновления количества фишек если выбрана позиция при симуляции
         const selectedPlace = getState().places.find(p => p.uuid === selectedId);
         const tokensInput = document.getElementById('property-tokens-input');
         if (selectedPlace && tokensInput) {
             tokensInput.value = selectedPlace.tokens;
         }
-    } else if (currentMode === 'simulation') {  // Для обновления переходов при срабатывании в
-                                                // симуляции
+    } else if (currentMode === 'simulation') {
+        // Для обновления переходов при срабатывании в симуляции
         selectObject(null);
     }
 }

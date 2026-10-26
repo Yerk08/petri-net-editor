@@ -1,3 +1,10 @@
+/**
+ * @file editor.js
+ * @brief Главный координационный модуль и точка входа графического редактора сетей Петри.
+ * @details Настраивает глобальное пространство имен для inline HTML-событий, управляет
+ *          интерактивной панелью свойств элементов и координирует инициализацию приложения.
+ */
+
 import {onCanvasMouseDown, onCanvasMouseMove, onNodeMouseDown, onNodeMouseMove, onNodeMouseUp} from './modules/events.js';
 import {initHotKeys} from './modules/hotkeys.js';
 import {render} from './modules/render.js';
@@ -7,12 +14,29 @@ import {loadToggleTheme, toggleTheme} from './modules/theme.js';
 
 
 // --- ПАНЕЛЬ СВОЙСТВ (СПРАВА) ---
+/**
+ * @brief Выбирает объект сети Петри для редактирования и генерирует форму свойств в правой панели.
+ * @details Если `id` равен `null` или не передан, панель отображает либо историю шагов симуляции
+ *          (если включен режим симуляции), либо дефолтную заглушку «Выберите объект».
+ *          Если `id` валиден, функция динамически строит HTML-форму для изменения полей (имя,
+ * фишки, вес, цвет).
+ * @param {string|null} id - Уникальный идентификатор (UUID) выбранного элемента (позиции, перехода,
+ *     дуги, комментария) или null.
+ *
+ * @note **ИНСТРУКЦИЯ ПО РАСШИРЕНИЮ:** Если вы добавляете новые свойства элементам (например,
+ * пропускная способность позиции или тип перевода):
+ * 1. Найдите блок соответствующего элемента (например, `if (place)`).
+ * 2. Добавьте новое поле ввода `<input>` в строку шаблона.
+ * 3. Назначьте обработчик события (`oninput` или `onchange`), вызывающий функцию изменения из
+ * `state.js`.
+ */
 export function selectObject(id) {
     setSelectedId(id);
     render();
 
     const panel = document.getElementById('properties-panel');
     if (!id) {
+        // Если объект не выбран, но запущена симуляция — выводим историю переходов
         if (getSimulation().isSimMode) {
             const simulation = getSimulation();
 
@@ -62,6 +86,7 @@ export function selectObject(id) {
         return;
     }
 
+    // Поиск сущности в глобальном состоянии по UUID
     const place = getState().places.find(p => p.uuid === id);
     const transition = getState().transitions.find(t => t.uuid === id);
     const arc = getState().arcs.find(a => a.uuid === id);
@@ -116,6 +141,7 @@ export function selectObject(id) {
     }
 
     const currentObj = place || transition || arc || comment;
+    // Общая для всех элементов секция выбора цвета и кнопка удаления
     panel.innerHTML += `
     <div class="property-group">
         <label>Цвет элемента:</label>
@@ -132,7 +158,13 @@ export function selectObject(id) {
 `;
 }
 
-// Чтобы HTML инлайн-события (onclick, onpointerdown) видели эти функции
+/**
+ * @section Экспорт функций в объект `window`.
+ * @brief Обеспечивает видимость основных функций ядра из инлайновых атрибутов HTML-шаблона
+ * (onclick, onchange).
+ * @warning При добавлении новых функций, которые должны вызываться напрямую из тегов разметки UI,
+ *          обязательно зарегистрируйте их здесь в формате `window.yourFunction = yourFunction;`.
+ */
 window.selectObject = selectObject;
 window.setMode = setMode;
 window.resetSimulation = resetSimulation;
@@ -158,9 +190,14 @@ window.toggleTheme = toggleTheme;
 window.onCanvasMouseDown = onCanvasMouseDown;
 window.onNodeMouseDown = onNodeMouseDown;
 
+/**
+ * @brief Функция инициализации приложения при старте страницы.
+ * @details Конфигурирует окружение, последовательно загружая тему, структуры данных и биндинги
+ * клавиш.
+ */
 function init() {
-    loadFromLocalStorage();  // Загружаем сохраненную сеть
     loadToggleTheme();       // Восстанавливаем тему оформления
+    loadFromLocalStorage();  // Загружаем сохраненную сеть
     initHotKeys();           // Инициализируем горячие клавиши
     render();                // Делаем первичный рендеринг
 }

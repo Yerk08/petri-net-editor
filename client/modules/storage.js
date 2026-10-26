@@ -1,3 +1,10 @@
+/**
+ * @file storage.js
+ * @brief Модуль подсистемы хранения, экспорта и импорта данных сети Петри.
+ * @details Обеспечивает сериализацию состояния, дроттлинг автосохранения в LocalStorage,
+ *          а также выгрузку сети в форматы JSON, SVG и PDF с корректным расчетом границ (BBox).
+ */
+
 import {selectObject} from '../editor.js';
 
 import {render} from './render.js';
@@ -5,8 +12,18 @@ import {getCleanState, replaceState, resetSimulation} from './state.js';
 
 
 // --- LOCAL STORAGE ---
-let lastSaveTime = 0;
-let saveTimeout = null;
+let lastSaveTime = 0;    ///< Метка времени (timestamp) последнего успешного сохранения
+let saveTimeout = null;  ///< Ссылка на активный таймер отложенного сохранения (debounce/throttle)
+
+/**
+ * @brief Сохраняет текущую сеть Петри в `localStorage` с защитой от частой перезаписи (Debounce).
+ * @details Функция ограничивает частоту сохранений интервалом в 660 миллисекунд. Если вызовы
+ *          происходят чаще, фактическая запись откладывается.
+ *
+ * @note **ИНСТРУКЦИЯ ПО РАСШИРЕНИЮ:** Если вы захотите добавить облачное автосохранение
+ * (например, через Fetch API / WebSockets на бэкенд), интегрируйте вызов API внутрь
+ * вложенной функции `doSave()`, чтобы сетевые запросы тоже автоматически дросселировались.
+ */
 export function saveToLocalStorage() {
     const now = Date.now();
     const remaining = 660 - (now - lastSaveTime);
@@ -34,6 +51,13 @@ export function loadFromLocalStorage() {
 }
 
 // --- ЭКСПОРТ И ИМПОРТ ФАЙЛОВ ---
+/**
+ * @brief Экспортирует текущую сеть Петри в `.json` файл.
+ * @details Пытается использовать современный `showSaveFilePicker` (File System Access API).
+ *          В случае его отсутствия в браузере автоматически переключается на классический
+ * fallback-метод с генерацией ссылки `<a download>`. Перед экспортом принудительно сбрасывает
+ * симуляцию.
+ */
 export async function exportToFile() {
     resetSimulation();
 
@@ -75,7 +99,17 @@ export async function exportToFile() {
     URL.revokeObjectURL(dataUrl);
 }
 
-
+/**
+ * @brief Импортирует состояние сети Петри из выбранного пользователем JSON-файла.
+ * @param {Event} event - Событие изменения (`change`) инпута или события сброса файла (`drop`).
+ *
+ * @warning **КРИТИЧЕСКОЕ МЕСТО ДЛЯ ИЗМЕНЕНИЙ (ВАЛИДАЦИЯ ФОРМАТА):**
+ * Сейчас проверка структуры файла поверхностная: `importedState.places && importedState.transitions
+ * && importedState.arcs`. Если вы добавляете новые обязательные корневые сущности в структуру сети
+ * (например, `subnets` или глобальные переменные):
+ * - Обязательно добавьте их проверку в условие `if`, иначе импорт дефектного файла может вызвать
+ * падение `render()`.
+ */
 export function importFromFile(event) {
     if (event) {
         event.preventDefault();
@@ -125,6 +159,11 @@ export function exportToSVG() {
     URL.revokeObjectURL(svgUrl);
 }
 
+/**
+ * @brief Инициирует экспорт графа сети Петри в формат PDF с помощью системного диалога печати.
+ * @details Создает временный контейнер `@media print`, подменяет им текущее тело страницы
+ *          и вызывает окно `window.print()`.
+ */
 export async function exportToPDF() {
     const serialized = serializeSVG();
     if (!serialized) return;
@@ -152,6 +191,21 @@ export async function exportToPDF() {
     }, 1000);
 }
 
+/**
+ * @brief Сериализует текущий DOM-элемент SVG, высчитывает его реальные границы (BBox) и упаковывает
+ * стили.
+ * @return {Object|undefined} Объект `{ svgClone, width, height }` или `undefined`, если SVG не
+ *     найден в DOM.
+ *
+ * @warning **МЕСТО ПОВЫШЕННОЙ ОПАСНОСТИ ДЛЯ СТИЛЕЙ (CORS):**
+ * Цикл `for (const stylesheet of document.styleSheets)` обходит все подключенные CSS-правила
+ * приложения для их инжекции прямо внутрь тега `<defs>` результирующего SVG (чтобы цвета, шрифты и
+ * маркеры стрелок не пропали). Если в проект будут подключены сторонние CSS-шрифты или библиотеки с
+ * внешних CDN (например, Google Fonts):
+ * - Браузер выбросит **SecurityError** при попытке прочесть `cssRules` из-за ограничений CORS.
+ * - Перехватчик `catch(e)` подавляет эту ошибку, но внешние стили не попадут в SVG. Учитывайте это
+ * при кастомизации UI!
+ */
 export function serializeSVG() {
     const svgElement = document.getElementById('petri-svg');
     if (!svgElement) return;

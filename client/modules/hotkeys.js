@@ -1,12 +1,28 @@
+/**
+ * @file hotkeys.js
+ * @brief Модуль диспетчеризации глобальных горячих клавиш и клавиатурных макросов.
+ * @details Настраивает слушатели клавиатурных событий для быстрого переключения инструментов,
+ *          удаления объектов, управления шагами симуляции (Undo/Redo), изменения цветов,
+ *          а также реализует изолированный буфер обмена для копирования узлов вместе с их дугами.
+ */
+
 import {selectObject} from '../editor.js';
 
 import {render} from './render.js';
 import {arcSourceId, currentMode, deleteObject, dragTarget, findComment, findNode, fireTransition, getState, selectedId, setArcSourceId, setDragTarget, setSelectedId} from './state.js';
 import {importFromFile} from './storage.js';
 
-// Буфер обмена для функций Ctrl+C / Ctrl+V
+/**
+ * @brief Внутренний изолированный буфер обмена для операций копирования и вставки.
+ * @details Хранит сериализованный снимок узла, его тип и массив метаданных связанных дуг.
+ *          `{ type: string, sourceUuid: string, node: Object, arcs: Array<Object> }`
+ */
 let clipboardData = null;
 
+/**
+ * @brief Инициализирует глобальный перехватчик клавиатурных событий `keydown`.
+ * @details Навешивает слушатель на объект `window` и организует каскадную проверку условий.
+ */
 export function initHotKeys() {
     window.addEventListener('keydown', function(e) {
         // Если фокус находится в полях ввода, полностью отключаем глобальные горячие клавиши
@@ -173,13 +189,14 @@ export function initHotKeys() {
         if (colorsMapping[e.key]) {
             e.preventDefault();
             const color = colorsMapping[e.key];
-            if (isCtrl) {
+            if (isCtrl) {  // Обновление цвета элемента
                 if (selectedId) {
                     window.updateElementColor(selectedId, color);
                     render();
                     window.selectObject(selectedId);
                 }
-            } else {
+
+            } else {  // Инвертирование состояние фильтра видимости на панели
                 const checkbox = document.getElementById(`chk-filter-${color}`);
                 if (checkbox) {
                     checkbox.checked = !checkbox.checked;

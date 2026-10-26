@@ -1,0 +1,13 @@
+# --- Doxygen ---
+client/doc/
+server/doc/
+
+# --- Системные папки редакторов кода ---
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+

@@ -1,3 +1,11 @@
+/**
+ * @file events.js
+ * @brief Модуль обработки пользовательских событий ввода (мышь, тач-интерфейсы, Drag-and-Drop).
+ * @details Реализует логику создания узлов по клику, перетаскивания элементов (Drag),
+ *          перемещения (Panning) и масштабирования (Zooming) холста, создания дуг натяжением,
+ *          а также интеграцию системного Drag-and-Drop для импорта файлов.
+ */
+
 import {selectObject} from '../editor.js';
 
 import {render} from './render.js';
@@ -8,22 +16,33 @@ import {importFromFile} from './storage.js';
 const svg = document.getElementById('petri-svg');
 
 // --- ПЕРЕМЕННЫЕ ДЛЯ ПЕРЕМЕЩЕНИЯ ---
-let startX = 0, startY = 0;
-let isPanning = false;
+let startX = 0;         ///< Начальная координата мыши X для расчета перемещения холста
+let startY = 0;         ///< Начальная координата мыши Y для расчета перемещения холста
+let isPanning = false;  ///< Флаг активного процесса перетаскивания (перемещения) холста
 
 // --- ПЕРЕМЕННЫЕ ДЛЯ МАСШТАБИРОВАНИЯ ---
-let scale = 1;
-let translateX = 0;
-let translateY = 0;
-let touchCenterX = 0;
-let touchCenterY = 0;
-let initialTranslateX = 0;
-let initialTranslateY = 0;
-let initialPinchDistance = 0; // Mobile pinch-to-Zoom
-let initialScale = 1;
-let isPinching = false;
+let scale = 1;                 ///< Текущий коэффициент масштабирования холста
+let translateX = 0;            ///< Смещение холста по оси X
+let translateY = 0;            ///< Смещение холста по оси Y
+let touchCenterX = 0;          ///< Точка фокуса X между двумя пальцами при жесте масштабирования
+let touchCenterY = 0;          ///< Точка фокуса Y между двумя пальцами при жесте масштабирования
+let initialTranslateX = 0;     ///< Исходное смещение X на момент начала масштабирования
+let initialTranslateY = 0;     ///< Исходное смещение Y на момент начала масштабирования
+let initialPinchDistance = 0;  ///< Стартовое расстояние между пальцами при масштабировании
+let initialScale = 1;          ///< Исходный масштаб на момент начала масштабирования
+let isPinching = false;        ///< Флаг активного процесса двухпальцевого масштабирования
 
 // --- ОБРАБОТКА КЛИКОВ НА ХОЛСТЕ ---
+/**
+ * @brief Обработчик нажатия мыши/указателя на пустую область холста SVG.
+ * @param {PointerEvent} e - Объект события указателя.
+ *
+ * @note **ФОРМУЛА ТРАНСФОРМАЦИИ КООРДИНАТ:**
+ * При создании элементов на холсте (`place`, `transition`, `comment`), экранные координаты
+ * клика `clientX/clientY` переводятся в истинные локальные координаты внутри SVG-пространства с
+ * учетом текущего сдвига и зума по формуле: `x = (e.clientX - rect.left - translateX) / scale`.
+ * Если вы измените архитектуру вложенности групп холста, обновите этот расчет координат.
+ */
 export function onCanvasMouseDown(e) {
     if (e.target !== svg) return;
 
@@ -67,6 +86,10 @@ export function onCanvasMouseDown(e) {
     render();
 }
 
+/**
+ * @brief Перемещает рабочую область холста вслед за движением мыши.
+ * @param {PointerEvent} e - Объект события указателя.
+ */
 export function onCanvasMouseMove(e) {
     if (!isPanning) return;
     if (e.cancelable) e.preventDefault();
@@ -77,6 +100,20 @@ export function onCanvasMouseMove(e) {
     applyTransform();
 }
 
+/**
+ * @brief Обработчик нажатия на интерактивный узел (позицию, переход или комментарий).
+ * @param {PointerEvent} e - Объект события.
+ * @param {string} id - UUID узла, на который нажали.
+ *
+ * @warning **БИЗНЕС-ЛОГИКА СОЗДАНИЯ ДУГ (СЕМАНТИЧЕСКИЕ ПРАВИЛА):**
+ * Функция контролирует чередование типов узлов: дуга **не может** соединять позицию с позицией
+ * или переход с переходом (`srcIsPlace !== tgtIsPlace`). Если дуга между узлами уже существует,
+ * вместо создания новой инкрементируется кратность (вес) существующей `existingArc.weight++`.
+ *
+ * @warning **ЛОГИКА ЦВЕТОВЫХ ДУГ:**
+ * При генерации новой дуги, ей автоматически присваивается цвет перехода, с которым она связана,
+ * обеспечивая визуальное разделение подсетей.
+ */
 export function onNodeMouseDown(e, id) {
     if (e.pointerType === 'touch' && (!e.isPrimary || isPinching)) {
         onNodeMouseUp(e);
@@ -151,19 +188,32 @@ export function onNodeMouseDown(e, id) {
     render();
 }
 
+/**
+ * @brief Рассчитывает новые координаты узла в реальном времени при его перетаскивании.
+ * @param {PointerEvent} e - Объект события движения указателя.
+ */
 export function onNodeMouseMove(e) {
     if (e.pointerType === 'touch' && (!e.isPrimary || isPinching)) {
         onNodeMouseUp(e);
         return;
     }
     if (!dragTarget || !dragTarget.node) return;
-    
+
     const rect = svg.getBoundingClientRect();
     dragTarget.node.x = (e.clientX - rect.left - translateX) / scale;
     dragTarget.node.y = (e.clientY - rect.top - translateY) / scale;
     render();
 }
 
+/**
+ * @brief Завершает процесс перетаскивания узла или натягивания дуги.
+ * @param {PointerEvent} e - Объект события отпускания указателя.
+ *
+ * @warning **ПАРСИНГ DOM ДЛЯ МЕХАНИКИ НАТЯГИВАНИЯ (DROP TARGET):**
+ * Для создания дуги жестом "натягивания линии" используется метод `document.elementFromPoint`.
+ * Если вы измените название функции `onNodeMouseDown` в инлайн-строках SVG-рендерера (`render.js`),
+ * этот парсер сломается и дуги перестанут натягиваться жестом мыши.
+ */
 export function onNodeMouseUp(e) {
     if (e && currentMode === 'arc' && arcSourceId) {  // Размещение дуги "натягиванием"
         const el = document.elementFromPoint(e.clientX, e.clientY);
@@ -190,12 +240,18 @@ export function onNodeMouseUp(e) {
 function applyTransform() {
     const viewport = document.getElementById('viewport') || svg.firstElementChild;
     if (viewport) {
-        viewport.setAttribute('transform', `translate(${translateX}, ${translateY}) scale(${scale})`);
+        viewport.setAttribute(
+            'transform', `translate(${translateX}, ${translateY}) scale(${scale})`);
     }
 }
 
+/**
+• @brief Обработчик прокрутки колеса мыши для зумирования холста (Zoom).
+• @details Масштабирование центрируется относительно текущего положения курсора мыши на экране.
+• Ограничение масштаба в пределах от x0.2 до x5.0.
+*/
 svg.addEventListener('wheel', function(e) {
-    // Проверяем, зажат ли Ctrl (или Cmd на Mac). 
+    // Проверяем, зажат ли Ctrl (или Cmd на Mac).
     // На тачпадах ноутбуков жест "щипок" тоже генерирует событие wheel с зажатым ctrlKey!
     if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
@@ -204,9 +260,9 @@ svg.addEventListener('wheel', function(e) {
         const oldScale = scale;
 
         if (e.deltaY < 0) {
-            scale = Math.min(5, scale * zoomFactor); // Макс зум x5
+            scale = Math.min(5, scale * zoomFactor);  // Макс зум x5
         } else {
-            scale = Math.max(0.2, scale / zoomFactor); // Мин зум x0.2
+            scale = Math.max(0.2, scale / zoomFactor);  // Мин зум x0.2
         }
 
         const rect = svg.getBoundingClientRect();
@@ -218,8 +274,11 @@ svg.addEventListener('wheel', function(e) {
 
         applyTransform();
     }
-}, { passive: false });
+}, {passive: false});
 
+/**
+• @brief Инициализация жеста Pinch-to-Zoom для мобильных устройств.
+*/
 let touchStartPoints = [];
 svg.addEventListener('touchstart', function(e) {
     if (e.touches.length === 2) {
@@ -228,12 +287,11 @@ svg.addEventListener('touchstart', function(e) {
         window.removeEventListener('pointerup', onNodeMouseUp);
 
         isPinching = true;
-        e.preventDefault(); 
+        e.preventDefault();
 
         initialPinchDistance = Math.hypot(
             e.touches[0].clientX - e.touches[1].clientX,
-            e.touches[0].clientY - e.touches[1].clientY
-        );
+            e.touches[0].clientY - e.touches[1].clientY);
         initialScale = scale;
 
         // Фиксируем координаты центра между пальцами строго В МОМЕНТ КАСАНИЯ
@@ -244,16 +302,18 @@ svg.addEventListener('touchstart', function(e) {
         initialTranslateX = translateX;
         initialTranslateY = translateY;
     }
-}, { passive: false });
+}, {passive: false});
 
+/**
+• @brief Пересчет масштаба в реальном времени при движении двух пальцев.
+*/
 svg.addEventListener('touchmove', function(e) {
     if (isPinching && e.touches.length === 2) {
         e.preventDefault();
 
         const currentDistance = Math.hypot(
             e.touches[0].clientX - e.touches[1].clientX,
-            e.touches[0].clientY - e.touches[1].clientY
-        );
+            e.touches[0].clientY - e.touches[1].clientY);
 
         if (initialPinchDistance > 0) {
             const pinchFactor = currentDistance / initialPinchDistance;
@@ -264,8 +324,11 @@ svg.addEventListener('touchmove', function(e) {
             applyTransform();
         }
     }
-}, { passive: false });
+}, {passive: false});
 
+/**
+• @brief Сброс флагов масштабирования при отпускании пальцев от экрана.
+*/
 svg.addEventListener('touchend', function(e) {
     if (e.touches.length < 2) {
         isPinching = false;
