@@ -172,9 +172,9 @@ export function render() {
 <g class="comment-g ${isSelected ? 'selected' : ''} ${isEmpty ? 'is-empty' : ''} ${dimClass}"
     onpointerdown="onNodeMouseDown(event, '${c.uuid}')">
     <!-- Изначально ставим заведомо большую или минимальную высоту, её мы скорректируем ниже -->
-    <rect x="${c.x - 75}" y="${c.y - 15}" width="150" height="30" class="comment-click-handler"/>
-    <foreignObject x="${c.x - 75}" y="${
-            c.y - 15}" width="150" height="9999" class="comment-foreign-object">
+    <rect x="${c.x - 100}" y="${c.y - 15}" width="200" height="30" class="comment-click-handler"/>
+    <foreignObject x="${c.x - 100}" y="${
+            c.y - 15}" width="200" height="9999" class="comment-foreign-object">
         <div id="${tempId}" class="comment-box-html" style="color: ${cColor}; height: auto;">${
             safeText}</div>
     </foreignObject>

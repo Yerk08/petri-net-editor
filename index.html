@@ -37,10 +37,14 @@
 
         <div class="section-title">Фильтр цветов</div>
         <div class="color-filter-box">
-            <label><input type="checkbox" id="chk-filter-black" checked onchange="toggleFilterColor('black')">⚫ <kbd>1</kbd></label>
-            <label><input type="checkbox" id="chk-filter-red" checked onchange="toggleFilterColor('red')">🔴 <kbd>2</kbd></label>
-            <label><input type="checkbox" id="chk-filter-blue" checked onchange="toggleFilterColor('blue')">🔵 <kbd>3</kbd></label>
-            <label><input type="checkbox" id="chk-filter-green" checked onchange="toggleFilterColor('green')">🟢 <kbd>4</kbd></label>
+            <label><input type="checkbox" id="chk-filter-black" checked onchange="toggleFilterColor('black')">⚫
+                <kbd>1</kbd></label>
+            <label><input type="checkbox" id="chk-filter-red" checked onchange="toggleFilterColor('red')">🔴
+                <kbd>2</kbd></label>
+            <label><input type="checkbox" id="chk-filter-blue" checked onchange="toggleFilterColor('blue')">🔵
+                <kbd>3</kbd></label>
+            <label><input type="checkbox" id="chk-filter-green" checked onchange="toggleFilterColor('green')">🟢
+                <kbd>4</kbd></label>
         </div>
 
         <div class="section-title">Управление холстом</div>
@@ -48,7 +52,8 @@
             style="background: #fff0f0; color: #d93838; border-color: #f5c2c2;">🧹 Очистить всё</button>
         <div style="display: flex; gap: 8px; width: 100%;">
             <button onclick="exportToSVG()" style="flex: 1; background: #fffbe6; border-color: #ffe58f;">🎨 SVG</button>
-            <button onclick="exportToPDF()" style="flex: 1; background: #fffbe6; border-color: #ffe58f;">📄 Print</button>
+            <button onclick="exportToPDF()" style="flex: 1; background: #fffbe6; border-color: #ffe58f;">📄
+                Print</button>
         </div>
         <button onclick="toggleTheme()" id="theme-btn"
             style="background: #f5f5f5; color: #262626; border-color: #d9d9d9;">🌓 Сменить тему</button>
@@ -59,6 +64,10 @@
             style="background: #f6fff5; border-color: #cfffcc;">📂 Импорт JSON</button>
         <input type="file" id="import-file-input" accept=".json" onchange="importFromFile(event)"
             style="display: none;">
+
+        <div class="section-title">Документация</div>
+        <button onclick="window.open('https://github.com/Yerk08/petri-net-editor', '_blank');"
+            style="background: #fcf8f2; border-color: #f1e4d3;">📖 Справка</button>
 
     </div>
 

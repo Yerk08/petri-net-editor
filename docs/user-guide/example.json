@@ -1,0 +1,221 @@
+{
+  "places": [
+    {
+      "uuid": "magazin",
+      "name": "Магазин",
+      "x": 393.85702841487046,
+      "y": 163.52274692357267,
+      "tokens": 5,
+      "initialTokens": 5
+    },
+    {
+      "uuid": "coin_10k",
+      "name": "10k",
+      "x": 171.95485639775734,
+      "y": 249.80630450009238,
+      "tokens": 2,
+      "initialTokens": 2
+    },
+    {
+      "uuid": "coin_5k",
+      "name": "5k",
+      "x": 598.9996059061024,
+      "y": 207.56017334758025,
+      "tokens": 0,
+      "initialTokens": 0,
+      "color": "black"
+    },
+    {
+      "uuid": "kupleno",
+      "name": "Куплено",
+      "x": 425.6825273536985,
+      "y": 543.5462363332596,
+      "tokens": 0,
+      "initialTokens": 0
+    },
+    {
+      "uuid": "P5",
+      "name": "Товар",
+      "x": 704.4069213867188,
+      "y": 350.6448287963867,
+      "tokens": 0,
+      "initialTokens": 0
+    }
+  ],
+  "transitions": [
+    {
+      "uuid": "t1",
+      "name": "Покупка",
+      "x": 247.54799500894904,
+      "y": 409.21124452221034
+    },
+    {
+      "uuid": "t2",
+      "name": "Покупка",
+      "x": 419.21752343653515,
+      "y": 383.8621805716955,
+      "color": "blue"
+    },
+    {
+      "uuid": "t3",
+      "name": "Покупка",
+      "x": 602.5800922373306,
+      "y": 381.37134419317874,
+      "color": "black"
+    },
+    {
+      "uuid": "T3",
+      "name": "Применение",
+      "x": 543.2530500793285,
+      "y": 547.0024313399639
+    },
+    {
+      "uuid": "T4",
+      "name": "Продажа",
+      "x": 685.6256103515625,
+      "y": 225.2417984008789,
+      "color": "red"
+    },
+    {
+      "uuid": "T5",
+      "name": "Продажа",
+      "x": 739.3405151367188,
+      "y": 126.12044525146484,
+      "color": "green"
+    }
+  ],
+  "arcs": [
+    {
+      "uuid": "arc_magazin_t1",
+      "sourceId": "magazin",
+      "targetId": "t1",
+      "weight": 1
+    },
+    {
+      "uuid": "arc_magazin_t2",
+      "sourceId": "magazin",
+      "targetId": "t2",
+      "weight": 1,
+      "color": "blue"
+    },
+    {
+      "uuid": "arc_magazin_t3",
+      "sourceId": "magazin",
+      "targetId": "t3",
+      "weight": 1,
+      "color": "black"
+    },
+    {
+      "uuid": "arc_10k_t1",
+      "sourceId": "coin_10k",
+      "targetId": "t1",
+      "weight": 2
+    },
+    {
+      "uuid": "arc_10k_t2",
+      "sourceId": "coin_10k",
+      "targetId": "t2",
+      "weight": 1,
+      "color": "blue"
+    },
+    {
+      "uuid": "arc_5k_t2",
+      "sourceId": "coin_5k",
+      "targetId": "t2",
+      "weight": 2,
+      "color": "blue"
+    },
+    {
+      "uuid": "arc_5k_t3",
+      "sourceId": "coin_5k",
+      "targetId": "t3",
+      "weight": 4,
+      "color": "black"
+    },
+    {
+      "uuid": "arc_t1_kupleno",
+      "sourceId": "t1",
+      "targetId": "kupleno",
+      "weight": 1
+    },
+    {
+      "uuid": "arc_t2_kupleno",
+      "sourceId": "t2",
+      "targetId": "kupleno",
+      "weight": 1,
+      "color": "blue"
+    },
+    {
+      "uuid": "arc_t3_kupleno",
+      "sourceId": "t3",
+      "targetId": "kupleno",
+      "weight": 1,
+      "color": "black"
+    },
+    {
+      "uuid": "kupleno-T3",
+      "sourceId": "kupleno",
+      "targetId": "T3",
+      "weight": 1
+    },
+    {
+      "uuid": "T3-P5",
+      "sourceId": "T3",
+      "targetId": "P5",
+      "weight": 1
+    },
+    {
+      "uuid": "P5-T4",
+      "sourceId": "P5",
+      "targetId": "T4",
+      "weight": 1,
+      "color": "red"
+    },
+    {
+      "uuid": "T4-coin_10k",
+      "sourceId": "T4",
+      "targetId": "coin_10k",
+      "weight": 3,
+      "color": "red"
+    },
+    {
+      "uuid": "P5-T5",
+      "sourceId": "P5",
+      "targetId": "T5",
+      "weight": 1,
+      "color": "green"
+    },
+    {
+      "uuid": "T5-coin_5k",
+      "sourceId": "T5",
+      "targetId": "coin_5k",
+      "weight": 6,
+      "color": "green"
+    }
+  ],
+  "comments": [
+    {
+      "uuid": "C3",
+      "text": "Без синего перехода системы бисимулярны при пропорции 1 токен 10k ≡ 2 токена 5k. В первой сети «Покупка» (t1) стоит 2 токена 10k, а «Продажа» (T4) возвращает 3. Во второй сети заменяющая «Покупка» (t3) стоит 4 токена 5k, а «Продажа» (T5) возвращает 6. В обоих случаях чистый прирост за цикл равен 0.5 шага «Покупки», что сохраняет пропорцию 1:2 и порождает идентичные цепочки действий.",
+      "x": 67.77769996512062,
+      "y": 276.6065640157345
+    },
+    {
+      "uuid": "C4",
+      "text": "Синий переход t2 ломает бисимуляцию, так как требует для «Покупки» одновременно 1 токен 10k и 2 токена 5k. Из-за этой перекрестной зависимости чистые ресурсы одного типа без другого приводят к тупику. Это нарушает симметрию сетей и делает невозможным сведение их поведений к единому эквивалентному соотношению.",
+      "x": 820.4760131835938,
+      "y": 269.9216995239258
+    },
+    {
+      "uuid": "C5",
+      "text": "Сеть Петри из чёрной + красной части бисимулярна чёрной + зеленой (при замене ресурса 10k = 2 * 5k)",
+      "x": 105.38567945906715,
+      "y": 55.729327644392264
+    }
+  ],
+  "counters": {
+    "P": 6,
+    "T": 7,
+    "C": 6
+  }
+}

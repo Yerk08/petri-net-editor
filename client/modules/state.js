@@ -169,27 +169,19 @@ export function isTransitionEnabled(transId) {
 }
 
 // Срабатывание перехода
-export function fireTransition(transId, isRedoAction = false) {
+export function fireTransition(transId) {
     if (!isTransitionEnabled(transId)) return;
     const transition = state.transitions.find(t => t.uuid === transId);
-    const snapshotBefore = createTokensSnapshot();
 
     if (transition) {
         simulation.history.push({
             uuid: transId,
             name: transition.name,
             color: transition.color || 'black',
-            tokensSnapshot: snapshotBefore
+            tokensSnapshot: createTokensSnapshot()
         });
 
-        if (!isRedoAction) {
-            simulation.redoHistory = [];
-        } else {
-            redoTransition();
-            render();
-            updatePropertyWhileSimulation();
-            return;
-        }
+        simulation.redoHistory = [];
     }
 
     const inArcs = state.arcs.filter(a => a.targetId === transId);
