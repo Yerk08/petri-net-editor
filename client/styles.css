@@ -207,9 +207,6 @@ svg {
 
 .arc {
     fill: none;
-    stroke: #555;
-    stroke-width: 2;
-    marker-end: url(#arrow);
     cursor: pointer;
 }
 

@@ -65,33 +65,73 @@ export function render() {
 
         const hasReturn =
             getState().arcs.some(a => a.sourceId === arc.targetId && a.targetId === arc.sourceId);
+
+        // Базовые геометрические расчеты расстояния между нодами
         const midX = (src.x + tgt.x) / 2;
         const midY = (src.y + tgt.y) / 2;
-
         const dx = tgt.x - src.x;
         const dy = tgt.y - src.y;
         const len = Math.hypot(dx, dy) || 1;
+
+        // Расчет опорной точки Q кривой Безье для изгиба дуги
         const curveIntensity = hasReturn ? 35 : 12;
         const qx = midX - (dy / len) * curveIntensity;
         const qy = midY + (dx / len) * curveIntensity;
 
-        const pathData = `M ${src.x} ${src.y} Q ${qx} ${qy} ${tgt.x} ${tgt.y}`;
-        const isSelected = selectedId === arc.uuid;
+        // Вычисляем вектор касательной и направление входа в цель
+        const tangentX = tgt.x - qx;
+        const tangentY = tgt.y - qy;
+        const tangentLen = Math.hypot(tangentX, tangentY) || 1;
+        const dirX = tangentX / tangentLen;
+        const dirY = tangentY / tangentLen;
 
+        // Размеры стрелки и базовый отступ для круглых позиций
+        const arrowLength = 10;
+        let offset = 20;
+        const isTargetTransition = getState().transitions.some(t => t.uuid === tgt.uuid);
+
+        // Расчет точки пересечения дуги с контуром прямоугольника перехода
+        if (isTargetTransition) {
+            const halfWidth = 10;
+            const halfHeight = 25;
+            const tX = dirX !== 0 ? Math.abs(halfWidth / dirX) : Infinity;
+            const tY = dirY !== 0 ? Math.abs(halfHeight / dirY) : Infinity;
+            offset = Math.min(tX, tY);
+        }
+
+        const endX = tgt.x - dirX * offset;
+        const endY = tgt.y - dirY * offset;
+
+        // Подготовка данных пути кривой Безье и состояния выбора
+        const pathData = `M ${src.x} ${src.y} Q ${qx} ${qy} ${endX} ${endY}`;
+        const isSelected = selectedId === arc.uuid;
         const pointerEvents = currentMode === 'simulation' ? 'style="pointer-events: none;"' : '';
 
         const dimClass = getColorDimClass(arc.color);
         const arcColor = arc.color || 'black';
+        const strokeWidth = isSelected ? '3.5px' : '2px';
+        const arrowWidth = 5;
 
+        // Геометрический расчет координат треугольника стрелки (ушек)
+        const baseX = endX - dirX * arrowLength;
+        const baseY = endY - dirY * arrowLength;
+        const leftX = baseX - dirY * arrowWidth;
+        const leftY = baseY + dirX * arrowWidth;
+        const rightX = baseX + dirY * arrowWidth;
+        const rightY = baseY - dirX * arrowWidth;
+        const arrowPoints = `${endX},${endY} ${leftX},${leftY} ${rightX},${rightY}`;
+
+        // Формирование SVG-разметки для невидимого ховера, самой дуги и стрелки
         const pathMarkup = `
-    <path d="${pathData}" class="arc-hover ${dimClass}" ${
-            pointerEvents} onpointerdown="selectObject('${arc.uuid}'); event.stopPropagation();"/>
-    <path d="${pathData}" class="arc ${isSelected ? 'selected' : ''} ${dimClass}" id="${
-            arc.uuid}" style="stroke: ${arcColor};"/>
+<path d="${pathData}" class="arc-hover ${dimClass}" ${pointerEvents} onpointerdown="selectObject('${
+            arc.uuid}'); event.stopPropagation();" style="fill: none;"/>
+<path d="${pathData}" class="arc ${isSelected ? 'selected' : ''} ${dimClass}" id="${
+            arc.uuid}" style="stroke: ${arcColor}; stroke-width: ${strokeWidth}; fill: none;"/>
+<polygon points="${arrowPoints}" class="${dimClass}" style="fill: ${arcColor};" />
 `;
-
         arcsGroup.insertAdjacentHTML('beforeend', pathMarkup);
 
+        // Отрисовка веса дуги (количества), если он больше 1
         if (arc.weight > 1) {
             const tx = (midX + qx) / 2;
             const ty = (midY + qy) / 2 - 5;
