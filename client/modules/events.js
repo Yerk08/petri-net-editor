@@ -131,7 +131,8 @@ export function onNodeMouseDown(e, id) {
         return;
     }
 
-    if (currentMode === 'analysis' && getAnalysisSession().isMarkingSetMode) {
+    if (currentMode === 'analysis') {
+        if (!getAnalysisSession().isMarkingSetMode) return;
         const isPlace = getState().places.some(t => t.uuid === id);
         if (isPlace) {
             selectObject(id);  // Для работы с ресурсами и разметками для задания анализа

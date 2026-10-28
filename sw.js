@@ -1,4 +1,4 @@
-const CACHE_NAME = 'petri-editor-v1.34'; // МЕНЯЙТЕ ВЕРСИЮ ДЛЯ ОБНОВЛЕНИЯ (v2, v3...)
+const CACHE_NAME = 'petri-editor-v1.35'; // МЕНЯЙТЕ ВЕРСИЮ ДЛЯ ОБНОВЛЕНИЯ (v2, v3...)
 const ASSETS = [
   './',
   './index.html',

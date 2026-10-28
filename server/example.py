@@ -74,6 +74,11 @@ ANALYSIS_SCHEMAS = {
             "id": "analysis_net_marking",
             "name": "Разметка сети для проверки",
             "type": "marking_filter"
+        },
+        {
+            "id": "analysis_net_marking2",
+            "name": "Разметка сети 2",
+            "type": "marking_filter"
         }
     ]
 }
@@ -94,4 +99,4 @@ def get_schema():
 if __name__ == '__main__':
     print("Сервер анализа сетей Петри запущен!")
     print("Адрес для ввода в клиенте: http://127.0.0.1:5000")
-    app.run(host='127.0.0.1', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)

@@ -55,10 +55,12 @@ export async function loadAnalysisTypes() {
     if (!selectEl || !serverInput) return;
 
     const serverUrl = getAnalysisSession().defaultServer.trim();
-    if (!serverUrl) {
+    if (!serverUrl && !getState().analysis) {
         selectEl.innerHTML = '<option value="">Укажите адрес сервера</option>';
         return;
     }
+
+    clearTimeout(analysisTimeout);
 
     if (currentAbortController) currentAbortController.abort();
     currentAbortController = new AbortController();
@@ -94,17 +96,24 @@ export async function loadAnalysisTypes() {
             await loadParamSchema(currentSavedTypeId);
         }
 
+        analysisTimeout = setTimeout(() => loadAnalysisTypes(), 30000);
+
     } catch (error) {
         if (error.name === 'AbortError') return;
         console.error('Ошибка при загрузке видов анализа:', error);
 
         updateConnectionIndicator('offline');
-        const currentAnalysis = getAnalysisState();
-        if (currentAnalysis.selectedType && currentAnalysis.selectedTypeName) {
+        const rootAnalysis = getState().analysis; 
+        if (rootAnalysis && rootAnalysis.selectedType) {
+            setAnalysisState(rootAnalysis);
+            const currentAnalysis = getAnalysisState();
+            selectEl.innerHTML = `<option value="${currentAnalysis.selectedType}" selected>${currentAnalysis.selectedTypeName || 'Сохраненный анализ'}</option>`;
             loadParamSchema(currentAnalysis.selectedType);
         } else {
             selectEl.innerHTML = '<option value="">Сервер недоступен</option>';
         }
+
+        analysisTimeout = setTimeout(() => loadAnalysisTypes(), 5000);
     }
 }
 
@@ -112,6 +121,14 @@ export async function loadAnalysisTypes() {
  * @brief Динамически обновляет тип анализа и запрашивает его схему полей.
  */
 export async function updateAnalysisType(value) {
+    const session = getAnalysisSession();
+    const oldElement = session.selectedElement;
+    if (session.isMarkingSetMode) {
+        toggleAnalysisMarkingCapture(oldElement);  // Закрываем режим разметки старого поля
+    } else if (session.isColorSetMode) {
+        toggleAnalysisColorCapture(oldElement);  // Закрываем режим цвета старого поля
+    }
+
     if (!value) {
         if (getState().analysis) {
             delete getState().analysis;
@@ -144,7 +161,7 @@ export async function updateAnalysisType(value) {
  */
 async function loadParamSchema(typeId) {
     const serverUrl = getAnalysisSession().defaultServer.replace(/\/+$/, '');
-    if (!serverUrl || !typeId) return;
+    if ((!serverUrl && !getState().analysis) || !typeId) return;
 
     try {
         const response = await fetch(`${serverUrl}/api/v1/get_schema?id=${typeId}`);
@@ -155,6 +172,8 @@ async function loadParamSchema(typeId) {
             setAnalysisState(currentAnalysis);
             saveToLocalStorage();
             renderDynamicFields(schema, currentAnalysis);
+        } else {
+            throw new Error(`Ошибка сервера: ${response.status}`);
         }
     } catch (e) {
         console.warn('Не удалось загрузить схему параметров с сервера, используем сохраненную:', e);
@@ -224,9 +243,9 @@ export function toggleAnalysisColorCapture(fieldId) {
     if (!isClosing && session.selectedElement) {
         const oldElement = session.selectedElement;
         if (session.isMarkingSetMode) {
-            toggleAnalysisMarkingCapture(oldElement); // Закрываем режим разметки старого поля
+            toggleAnalysisMarkingCapture(oldElement);  // Закрываем режим разметки старого поля
         } else if (session.isColorSetMode) {
-            toggleAnalysisColorCapture(oldElement);   // Закрываем режим цвета старого поля
+            toggleAnalysisColorCapture(oldElement);  // Закрываем режим цвета старого поля
         }
     }
 
@@ -287,9 +306,9 @@ export function toggleAnalysisMarkingCapture(fieldId) {
     if (!isClosing && session.selectedElement) {
         const oldElement = session.selectedElement;
         if (session.isMarkingSetMode) {
-            toggleAnalysisMarkingCapture(oldElement); // Закрываем режим разметки старого поля
+            toggleAnalysisMarkingCapture(oldElement);  // Закрываем режим разметки старого поля
         } else if (session.isColorSetMode) {
-            toggleAnalysisColorCapture(oldElement);   // Закрываем режим цвета старого поля
+            toggleAnalysisColorCapture(oldElement);  // Закрываем режим цвета старого поля
         }
     }
 
@@ -308,6 +327,17 @@ export function toggleAnalysisMarkingCapture(fieldId) {
         if (currentAnalysis.params[fieldId] &&
             typeof currentAnalysis.params[fieldId] === 'object') {
             restoreTokensFromSnapshot(currentAnalysis.params[fieldId]);
+        } else {
+            // Если сохраненных параметров нет, инициализируем пустую разметку (0 фишек)
+            const emptySnapshot = {};
+            getState().places.forEach(p => {
+                emptySnapshot[p.uuid] = 0;
+            });
+
+            currentAnalysis.params[fieldId] = emptySnapshot;
+            setAnalysisState(currentAnalysis);
+            saveToLocalStorage();
+            restoreTokensFromSnapshot(emptySnapshot);
         }
 
         session.selectedElement = fieldId;

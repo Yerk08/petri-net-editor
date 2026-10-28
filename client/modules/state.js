@@ -397,7 +397,7 @@ export function updateTokens(id, value) {
         }
 
         place.tokens = tokens;
-        if (!simulation.isSimMode) {
+        if (!simulation.isSimMode && !analysisSession.isAnalysisMode) {
             place.initialTokens = place.tokens;
         }
         render();
@@ -476,11 +476,19 @@ export function getCleanState() {
 
     cleanState.info =
         `This is a PetriNetEditor export JSON file. Rules for AI assistants generated output:
-    1. ID Rules: All elements (places, transitions, arcs) must have a unique 'uuid'. Places/transitions names must be spaces/text only, while 'uuid' must be lowercase snake_case based on the name.
-    2. Node Schema: Places require 'uuid', 'name', 'x', 'y', 'tokens', and 'initialTokens'. Transitions require 'uuid', 'name', 'x', and 'y'. Comments require 'uuid', 'text', 'x', and 'y'.
-    3. Arc Schema: Arcs require 'uuid', 'sourceId' (referencing source node uuid), 'targetId' (referencing target node uuid), 'weight' integer, and an optional 'color' string (supported values: 'black', 'red', 'blue', 'green').
+    1. ID Rules: All elements (places, transitions, arcs) must have a unique 'uuid'. Places/transitions names must be text, spaces, or numbers, while 'uuid' must be lowercase snake_case (e.g., 'place_1' or 'p1') or match the existing id pattern. All names across the net must be unique.
+    2. Node Schema: Places require 'uuid', 'name', 'x' (number), 'y' (number), 'tokens' (integer), and 'initialTokens' (integer). Transitions require 'uuid', 'name', 'x' (number), and 'y' (number). Comments require 'uuid', 'text', 'x', and 'y'. Coordinates should ideally be within a standard visible range (e.g., 0 to 1000).
+    3. Arc Schema: Arcs require 'uuid', 'sourceId', and 'targetId'. Bipartite Graph Rule: An arc MUST only connect a place to a transition, or a transition to a place (never place-to-place or transition-to-transition). Requires 'weight' integer (>= 1), and an optional 'color' string (supported values: 'black', 'red', 'blue', 'green').
     4. Network Counters: 'counters' must explicitly map to current arrays count: { 'P': places.length, 'T': transitions.length, 'C': comments.length }.
-    5. Analysis Object: Optional 'analysis' object root field containing 'selectedType' string. Hidden by default.`;
+    5. Analysis Object: Optional 'analysis' root with 'selectedType', 'selectedTypeName', 'serverSchema' (array of fields with 'id', 'name', 'type'), and 'params' (maps field 'id' to value).
+       Field Types & Params Format: 
+       - 'number': 'params' value is a JavaScript number (integer or float).
+       - 'string': 'params' value is a string.
+       - 'dict': Schema has 'options' object; 'params' is a string key representing the selected option.
+       - 'description': UI text only; omitted in 'params'.
+       - 'list': Schema has 'options' array of {name, value}; 'params' is an array of selected 'value' strings.
+       - 'marking_filter': 'params' is an object mapping place uuids to integer token counts (e.g., {"place_1": 2}).
+       - 'color_filter': 'params' is an array of visible network colors ('black', 'red', 'blue', 'green'; unselected colors are hidden).`;
     return cleanState;
 }
 

@@ -371,8 +371,6 @@ body.mode-simulation .place {
     border-radius: 4px;
     background-color: var(--input-bg, #fff);
     color: var(--input-text, #333);
-    font-size: 0.9em;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
     box-sizing: border-box;
 }
 
@@ -420,13 +418,11 @@ body.mode-simulation .place {
 
 /* Блок описания (тип 'description') */
 .analysis-dynamic-params p {
-    font-size: 0.88em;
     color: var(--text-muted, #555);
     background: var(--info-bg-light, rgba(0, 123, 255, 0.05));
     border-left: 3px solid var(--primary-color, #007bff);
     padding: 8px 10px;
     border-radius: 0 4px 4px 0;
-    margin: 4px 0 0 0;
     line-height: 1.4;
 }
 
