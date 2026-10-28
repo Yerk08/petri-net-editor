@@ -8,7 +8,7 @@
 import {selectObject} from '../editor.js';
 
 import {render} from './render.js';
-import {getCleanState, replaceState, resetSimulation} from './state.js';
+import {getAnalysisSession, getCleanState, replaceState, resetSimulation, setDefaultServer} from './state.js';
 
 
 // --- LOCAL STORAGE ---
@@ -32,6 +32,9 @@ export function saveToLocalStorage() {
     const doSave = () => {
         lastSaveTime = Date.now();
         localStorage.setItem('petri_net_save', JSON.stringify(getCleanState()));
+
+        const serverUrl = getAnalysisSession().defaultServer;
+        localStorage.setItem('analysis_server_save', JSON.stringify(serverUrl));
     };
 
     if (remaining <= 0) {
@@ -42,6 +45,14 @@ export function saveToLocalStorage() {
 }
 
 export function loadFromLocalStorage() {
+    const savedServer = localStorage.getItem('analysis_server_save');
+    if (savedServer) {
+        const url = JSON.parse(savedServer);
+        if (url) {
+            setDefaultServer(url);
+        }
+    }
+
     const data = localStorage.getItem('petri_net_save');
     if (data) {
         replaceState(JSON.parse(data));

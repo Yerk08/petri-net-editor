@@ -47,6 +47,10 @@
                 <kbd>4</kbd></label>
         </div>
 
+        <div class="section-title">Анализ</div>
+        <button id="btn-analysis" onclick="setMode('analysis')">🔍 Анализ <kbd>F</kbd></button>
+        <button id="btn-dispatcher" onclick="setMode('dispatcher')">📊 Диспетчер <kbd>V</kbd></button>
+
         <div class="section-title">Управление холстом</div>
         <button onclick="clearPetriNet()" class="btn-danger"
             style="background: #fff0f0; color: #d93838; border-color: #f5c2c2;">🧹 Очистить всё</button>
@@ -66,7 +70,8 @@
             style="display: none;">
 
         <div class="section-title">Документация</div>
-        <button onclick="window.open('https://github.com/Yerk08/petri-net-editor/blob/main/docs/user-guide.md', '_blank');"
+        <button
+            onclick="window.open('https://github.com/Yerk08/petri-net-editor/blob/main/docs/user-guide.md', '_blank');"
             style="background: #fcf8f2; border-color: #f1e4d3;">📖 Справка</button>
 
     </div>

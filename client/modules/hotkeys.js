@@ -166,7 +166,7 @@ export function initHotKeys() {
         }
 
         // --- 4. ПЕРЕКЛЮЧЕНИЕ РЕЖИМОВ ---
-        // Соответствует порядку: Select, Simulation, Place, Transition, Arc, Token, Comment
+        // Соответствует порядку: Select, Simulation, Place, Transition, Arc, Token, Comment, Analysis, Dispatcher
         const modesMapping = {
             'r': 'select',
             's': 'simulation',
@@ -174,7 +174,9 @@ export function initHotKeys() {
             't': 'transition',
             'a': 'arc',
             'e': 'token',
-            'w': 'comment'
+            'w': 'comment',
+            'f': 'analysis',
+            'v': 'dispatcher'
         };
 
         if (modesMapping[e.key]) {

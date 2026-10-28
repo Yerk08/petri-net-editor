@@ -5,12 +5,14 @@
  *          интерактивной панелью свойств элементов и координирует инициализацию приложения.
  */
 
+import {loadAnalysisTypes, onServerUrlInput, updateAnalysisParamGroup, updateAnalysisParamValue, updateAnalysisType, updateConnectionIndicator} from './modules/analysis.js';
 import {onCanvasMouseDown, onCanvasMouseMove, onNodeMouseDown, onNodeMouseMove, onNodeMouseUp} from './modules/events.js';
 import {initHotKeys} from './modules/hotkeys.js';
 import {render} from './modules/render.js';
-import {applySimulationState, clearPetriNet, currentMode, deleteObject, findComment, findNode, fireTransition, getSimulation, getState, redoTransition, resetSimulation, selectedId, setMode, setSelectedId, toggleFilterColor, undoTransition, updateArcWeight, updateCommentText, updateElementColor, updateName, updateTokens} from './modules/state.js';
+import {applySimulationState, clearPetriNet, currentMode, deleteObject, findComment, findNode, fireTransition, getAnalysisSession, getAnalysisState, getSimulation, getState, redoTransition, resetSimulation, selectedId, setMode, setSelectedId, toggleFilterColor, undoTransition, updateArcWeight, updateCommentText, updateElementColor, updateName, updateTokens} from './modules/state.js';
 import {exportToFile, exportToPDF, exportToSVG, importFromFile, loadFromLocalStorage} from './modules/storage.js';
 import {loadToggleTheme, toggleTheme} from './modules/theme.js';
+
 
 
 // --- ПАНЕЛЬ СВОЙСТВ (СПРАВА) ---
@@ -79,6 +81,40 @@ export function selectObject(id) {
             `;
 
             panel.innerHTML = historyHtml;
+            return;
+        }
+
+        if (getAnalysisSession().isAnalysisMode) {
+            const currentAnalysis = getAnalysisState();
+            const serverUrl = getAnalysisSession().defaultServer || '';
+
+            let html = `
+                <div class="property-group">
+                    <h3>Адрес сервера</h3>
+                    <input type="text" id="analysis-server-input" value="${serverUrl}" 
+                        oninput="window.onServerUrlInput(this.value)">
+                </div>
+                
+                <div class="property-group">
+                    <h3>Вид анализа</h3>
+                    <select id="analysis-type-select" onchange="window.updateAnalysisType(this.value)">
+                        ${
+                currentAnalysis.selectedType ?
+                    `<option value="${currentAnalysis.selectedType}" selected>${
+                        currentAnalysis.selectedTypeName}</option>` :
+                    '<option value="">Укажите адрес сервера</option>'}
+                    </select>
+                </div>
+                
+                <div id="analysis-dynamic-container" class="analysis-dynamic-params"></div>
+            `;
+
+            panel.innerHTML = html;
+            setTimeout(() => {
+                if (typeof window.loadAnalysisTypes === 'function') {
+                    window.loadAnalysisTypes();
+                }
+            }, 0);
             return;
         }
 
@@ -180,6 +216,13 @@ window.updateArcWeight = updateArcWeight;
 window.updateCommentText = updateCommentText;
 window.deleteObject = deleteObject;
 window.clearPetriNet = clearPetriNet;
+
+window.updateConnectionIndicator = updateConnectionIndicator;
+window.onServerUrlInput = onServerUrlInput;
+window.updateAnalysisType = updateAnalysisType;
+window.loadAnalysisTypes = loadAnalysisTypes;
+window.updateAnalysisParamValue = updateAnalysisParamValue;
+window.updateAnalysisParamGroup = updateAnalysisParamGroup;
 
 window.exportToFile = exportToFile;
 window.importFromFile = importFromFile;

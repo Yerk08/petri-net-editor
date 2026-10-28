@@ -34,16 +34,24 @@ let simulation = {
     redoHistory: []    ///< Стек отмененных переходов (для Redo)
 }
 
-export let currentMode = 'select';  ///< select, simulation, place, transition, arc, token, comment
-export let selectedId = null;       ///< UUID выбранного в данный момент объекта
-export let dragTarget = null;       ///< Ссылка на перетаскиваемый объект
-export let arcSourceId = null;      ///< UUID начального узла при создании дуги
+/**
+ * @brief Объект состояния текущей сессии анализа (локальные флаги). Не экспортируется.
+ */
+let analysisSession = {
+    isAnalysisMode: false,    ///< Флаг активного режима анализа
+    defaultServer: '',        ///< Сервер для запросов по умолчанию (сохраняется)
+    isMarkingSetMode: false,  ///< Флаг режима задания разметки
+    selectedElement: null     ///< Выбранный элемент для установки значения
+}
+
+export let currentMode =
+    'select';  ///< select, simulation, place, transition, arc, token, comment, analysis, dispatcher
+export let selectedId = null;   ///< UUID выбранного в данный момент объекта
+export let dragTarget = null;   ///< Ссылка на перетаскиваемый объект
+export let arcSourceId = null;  ///< UUID начального узла при создании дуги
 
 /**
  * @brief Карта видимости элементов по цветам.
- * @note **ИНСТРУКЦИЯ ПО РАСШИРЕНИЮ:** При добавлении нового цвета в палитру приложения
- * (например, 'yellow'), обязательно добавьте его сюда со значением `true`, иначе элементы
- * этого цвета по умолчанию станут невидимыми. Но добавлять новый цвет НЕ РЕКОМЕНДУЕТСЯ!
  */
 export let visibleColors = {
     black: true,
@@ -74,6 +82,21 @@ export function getState() {
 export function getSimulation() {
     return simulation;
 }
+export function getAnalysisSession() {
+    return analysisSession;
+}
+export function setDefaultServer(url) {
+    analysisSession.defaultServer = url;
+}
+export function getAnalysisState() {
+    return state.analysis ?
+        state.analysis :
+        {selectedType: '', selectedTypeName: '', serverSchema: null, params: {}};
+}
+
+export function setAnalysisState(analysis) {
+    state.analysis = analysis;
+}
 /**
  * @brief Полностью заменяет текущее состояние сети (используется при импорте).
  * @param {Object} newState - Новый объект состояния.
@@ -100,12 +123,22 @@ export function setMode(mode) {
         simulation.isSimMode = false;
         selectObject(null);
     }
+    if (currentMode === 'analysis' && mode !== 'analysis') {
+        resetSimulation();
+        analysisSession.isAnalysisMode = false;
+        selectObject(null);
+    }
 
     // Вход в режим симуляции
     if (mode === 'simulation') {
         if (currentMode !== 'simulation') {
-            state.places.forEach(p => p.initialTokens = p.tokens);
             simulation.isSimMode = true;
+        }
+        selectObject(null);
+    }
+    if (mode === 'analysis') {
+        if (currentMode !== 'analysis') {
+            analysisSession.isAnalysisMode = true;
         }
         selectObject(null);
     }
@@ -212,8 +245,8 @@ export function findComment(id) {
  * Если вы добавляете:
  * 1. **Ингибиторные дуги (Inhibitor Arcs):** Нужно добавить проверку, что у ингибиторной дуги
  * количество фишек на входе СТРОГО МЕНЬШЕ веса дуги.
- * 2. **Информационные/кратные дуги:** Убедитесь, что логика фильтрации цветов `getColorDimClass`
- * корректно обрабатывает новые типы дуг.
+ * 2. **Информационные/кратные дуги:** Убедитесь, что логика фильтрации цветов
+ * `getColorDimClass` корректно обрабатывает новые типы дуг.
  * 3. **Временные задержки (Timed Petri Nets):** Сюда потребуется внедрить проверку доступности
  * таймера перехода.
  */
@@ -378,8 +411,9 @@ export function updateCommentText(id, newText) {
  * @param {string} id - UUID удаляемого объекта.
  * @warning ОБЯЗАТЕЛЬНО К ИЗМЕНЕНИЮ ПРИ ДОБАВЛЕНИИ НОВЫХ СВЯЗЕЙ:
  * Если вы добавляете новые сущности (например, запрещающие дуги или привязанные скрипты к
- * позициям), вы должны добавить их очистку/фильтрацию в этой функции, чтобы не плодить "сиротские"
- * (dangling) связи. Пример: state.inhibitorArcs = state.inhibitorArcs.filter(a => a.sourceId !== id
+ * позициям), вы должны добавить их очистку/фильтрацию в этой функции, чтобы не плодить
+ * "сиротские" (dangling) связи. Пример: state.inhibitorArcs = state.inhibitorArcs.filter(a =>
+ * a.sourceId !== id
  * && a.targetId !== id);
  */
 export function deleteObject(id) {
@@ -393,8 +427,8 @@ export function deleteObject(id) {
 
 /**
  * @brief Полностью очищает текущую сеть Петри, сбрасывая состояние в начальное.
- * @note ИНСТРУКЦИЯ ПО РАСШИРЕНИЮ: Если вы добавили новые глобальные массивы или счетчики в state,
- * не забудьте проинициализировать их пустыми значениями/дефолтами внутри этого метода.
+ * @note ИНСТРУКЦИЯ ПО РАСШИРЕНИЮ: Если вы добавили новые глобальные массивы или счетчики в
+ * state, не забудьте проинициализировать их пустыми значениями/дефолтами внутри этого метода.
  */
 export function clearPetriNet() {
     const confirmed = confirm(
@@ -410,7 +444,8 @@ export function clearPetriNet() {
 
 /**
  * @brief Формирует чистую копию состояния сети, готовую к экспорту в JSON файл.
- * @return {Object} Глубокая копия объекта состояния с добавленной мета-информацией и правилами AI.
+ * @return {Object} Глубокая копия объекта состояния с добавленной мета-информацией и правилами
+ *     AI.
  * @warning ОБЯЗАТЕЛЬНО К ОБНОВЛЕНИЮ ПРИ ИЗМЕНЕНИИ АРХИТЕКТУРЫ:
  * Если вы меняете спецификацию полей объектов или добавляете новые типы элементов,
  * обязательно отредактируйте строковое поле cleanState.info. Текст в нем напрямую
@@ -430,7 +465,8 @@ export function getCleanState() {
     1. ID Rules: All elements (places, transitions, arcs) must have a unique 'uuid'. Places/transitions names must be spaces/text only, while 'uuid' must be lowercase snake_case based on the name.
     2. Node Schema: Places require 'uuid', 'name', 'x', 'y', 'tokens', and 'initialTokens'. Transitions require 'uuid', 'name', 'x', and 'y'. Comments require 'uuid', 'text', 'x', and 'y'.
     3. Arc Schema: Arcs require 'uuid', 'sourceId' (referencing source node uuid), 'targetId' (referencing target node uuid), 'weight' integer, and an optional 'color' string (supported values: 'black', 'red', 'blue', 'green').
-    4. Network Counters: 'counters' must explicitly map to current arrays count: { 'P': places.length, 'T': transitions.length, 'C': comments.length }.`;
+    4. Network Counters: 'counters' must explicitly map to current arrays count: { 'P': places.length, 'T': transitions.length, 'C': comments.length }.
+    5. Analysis Object: Optional 'analysis' object root field containing 'selectedType' string. Hidden by default.`;
     return cleanState;
 }
 
