@@ -5,7 +5,7 @@
  *          интерактивной панелью свойств элементов и координирует инициализацию приложения.
  */
 
-import {loadAnalysisTypes, onServerUrlInput, updateAnalysisParamGroup, updateAnalysisParamValue, updateAnalysisType, updateConnectionIndicator} from './modules/analysis.js';
+import {loadAnalysisTypes, onServerUrlInput, toggleAnalysisColorCapture, updateAnalysisParamGroup, updateAnalysisParamValue, updateAnalysisType, updateConnectionIndicator, toggleAnalysisMarkingCapture, resetAnalysisMarkingToInitial, clearAnalysisMarkingToEmpty} from './modules/analysis.js';
 import {onCanvasMouseDown, onCanvasMouseMove, onNodeMouseDown, onNodeMouseMove, onNodeMouseUp} from './modules/events.js';
 import {initHotKeys} from './modules/hotkeys.js';
 import {render} from './modules/render.js';
@@ -223,6 +223,10 @@ window.updateAnalysisType = updateAnalysisType;
 window.loadAnalysisTypes = loadAnalysisTypes;
 window.updateAnalysisParamValue = updateAnalysisParamValue;
 window.updateAnalysisParamGroup = updateAnalysisParamGroup;
+window.toggleAnalysisColorCapture = toggleAnalysisColorCapture;
+window.toggleAnalysisMarkingCapture = toggleAnalysisMarkingCapture;
+window.resetAnalysisMarkingToInitial = resetAnalysisMarkingToInitial;
+window.clearAnalysisMarkingToEmpty = clearAnalysisMarkingToEmpty;
 
 window.exportToFile = exportToFile;
 window.importFromFile = importFromFile;

@@ -64,6 +64,16 @@ ANALYSIS_SCHEMAS = {
                 {"name": "Слабая справедливость (Weak)", "value": "weak"},
                 {"name": "Сильная справедливость (Strong)", "value": "strong"}
             ]
+        },
+        {
+            "id": "analysis_net_colors",
+            "name": "Цвета сети для проверки",
+            "type": "color_filter"
+        },
+        {
+            "id": "analysis_net_marking",
+            "name": "Разметка сети для проверки",
+            "type": "marking_filter"
         }
     ]
 }

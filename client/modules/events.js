@@ -9,7 +9,7 @@
 import {selectObject} from '../editor.js';
 
 import {render} from './render.js';
-import {arcSourceId, currentMode, deleteObject, dragTarget, findComment, findNode, fireTransition, getState, selectedId, setArcSourceId, setDragTarget, setSelectedId} from './state.js';
+import {arcSourceId, currentMode, deleteObject, dragTarget, findComment, findNode, fireTransition, getAnalysisSession, getState, selectedId, setArcSourceId, setDragTarget, setSelectedId} from './state.js';
 import {importFromFile} from './storage.js';
 
 
@@ -46,7 +46,7 @@ let isPinching = false;        ///< Флаг активного процесса
 export function onCanvasMouseDown(e) {
     if (e.target !== svg) return;
 
-    if (currentMode === 'select' || currentMode === 'simulation' ||
+    if (currentMode === 'select' || currentMode === 'simulation' || currentMode == 'analysis' ||
         (currentMode === 'arc' || currentMode == 'token')) {
         isPanning = true;
         startX = e.clientX - translateX;
@@ -128,6 +128,14 @@ export function onNodeMouseDown(e, id) {
             fireTransition(id);
         else if (isPlace)
             selectObject(id);  // Для работы с ресурсами и разметками во время симуляции
+        return;
+    }
+
+    if (currentMode === 'analysis' && getAnalysisSession().isMarkingSetMode) {
+        const isPlace = getState().places.some(t => t.uuid === id);
+        if (isPlace) {
+            selectObject(id);  // Для работы с ресурсами и разметками для задания анализа
+        }
         return;
     }
 

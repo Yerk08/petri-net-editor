@@ -7,7 +7,7 @@
 
 import {selectObject} from '../editor.js';
 
-import {arcSourceId, currentMode, findNode, getColorDimClass, getState, isTransitionEnabled, selectedId} from './state.js';
+import {arcSourceId, currentMode, findNode, getColorDimClass, getState, isTransitionEnabled, selectedId, getAnalysisSession} from './state.js';
 import {saveToLocalStorage} from './storage.js';
 
 const svg = document.getElementById('petri-svg');
@@ -197,12 +197,14 @@ export function render() {
         // Генерируем многострочный текст с базовой точки y = p.y - 25
         const textMarkup = renderMultilineSVGText(p.name, p.x, p.y - 25);
 
+        const session = getAnalysisSession();
+        const markingClass = (session.isAnalysisMode && session.isMarkingSetMode) ? 'marking-enabled' : '';
+
         const markup = `
     <g class="${dimClass}" onpointerdown="onNodeMouseDown(event, '${p.uuid}')">
         <circle cx="${p.x}" cy="${p.y}" r="20" class="place ${isSelected ? 'selected' : ''} ${
-            isArcSource ? 'source-selected' : ''}" style="stroke: ${pColor};"/>
+            isArcSource ? 'source-selected' : ''} ${markingClass}" style="stroke: ${pColor};"/>
         ${tokensMarkup}
-        <!-- Добавляем инлайн-стиль цвета к сгенерированному тексту -->
         <g style="fill: ${pColor};">${textMarkup}</g>
     </g>
 `;
@@ -290,3 +292,130 @@ export function updatePropertyWhileSimulation() {
         selectObject(null);
     }
 }
+
+
+/**
+ * @brief Динамически генерирует и отрисовывает параметры запроса анализа на основе полученной схемы.
+ * @param {Array} serverSchema - Массив объектов описания полей (схема), полученный от сервера.
+ * @param {Object} currentAnalysis - Текущее состояние (стейт) подсистемы анализа с сохраненными параметрами.
+ */
+export function renderDynamicFields(serverSchema, currentAnalysis) {
+    const dynamicContainer = document.getElementById('analysis-dynamic-container');
+    if (!dynamicContainer || !serverSchema || !Array.isArray(serverSchema)) return;
+
+    let html = '';
+    serverSchema.forEach(field => {
+        const fieldId = field.id;
+        const fieldName = field.name;
+        const fieldType = field.type;
+        const savedValue = currentAnalysis.params?.[fieldId] ?? '';
+
+        html += `<div class="property-group">`;
+        if (fieldType !== 'description') {
+            html += `<label><b>${fieldName}:</b></label>`;
+        }
+
+        if (fieldType === 'list') {
+            html += `<div class="param-group-list" id="param-group-${fieldId}">`;
+            if (Array.isArray(field.options)) {
+                field.options.forEach(opt => {
+                    const isChecked = Array.isArray(savedValue) && savedValue.includes(opt.value) ?
+                        'checked' :
+                        '';
+                    html += `
+                            <label>
+                                <input type="checkbox" value="${opt.value}" ${isChecked} 
+                                    onchange="window.updateAnalysisParamGroup('${fieldId}', '${
+                        opt.value}', this.checked)">
+                                ${opt.name}
+                            </label>
+                        `;
+                });
+            }
+            html += `</div>`;
+
+        } else if (fieldType === 'color_filter') {
+            const session = getAnalysisSession();
+            const isConfiguringThis = (session.selectedElement === fieldId);
+            html += `
+                    <button type="button" class="btn-analysis-color-trigger" 
+                        onclick="window.toggleAnalysisColorCapture('${fieldId}')">
+                        ${isConfiguringThis ? '🛑 Задать цвета' : '🎨 Цвета сети'}
+                    </button>
+                `;
+            if (!isConfiguringThis && savedValue.length > 0) {
+                const colorEmojis = {black: '⚫', red: '🔴', blue: '🔵', green: '🟢'};
+                const symbolsHtml =
+                    savedValue.map(color => colorEmojis[color] || '').filter(Boolean).join('');
+                html += `
+                        <div class="active-colors-preview">
+                            <kbd>Цвета:${symbolsHtml}</kbd>
+                        </div>
+                    `;
+            }
+            html += `</div>`;
+
+        } else if (fieldType === 'marking_filter') {
+            const session = getAnalysisSession();
+            const isConfiguringThis =
+                (session.selectedElement === fieldId && session.isMarkingSetMode);
+            html += `<div class="marking-filter-box">`;
+            html += `
+                    <button type="button" class="btn-analysis-marking-trigger ${
+                isConfiguringThis ? 'active-stop' : ''}" 
+                        onclick="window.toggleAnalysisMarkingCapture('${fieldId}')">
+                        ${isConfiguringThis ? '🛑 Задать разметку' : '🎯 Разметка'}
+                    </button>
+                `;
+
+            if (isConfiguringThis) {
+                html += `
+                        <div class="marking-actions-row">
+                            <button type="button" onclick="window.resetAnalysisMarkingToInitial('${
+                    fieldId}')">🔄 Из изначальной</button>
+                            <button type="button" onclick="window.clearAnalysisMarkingToEmpty('${
+                    fieldId}')">🗑️ Сделать пустым</button>
+                        </div>
+                    `;
+            } else {
+                const totalTokens = savedValue && typeof savedValue === 'object' ?
+                    Object.values(savedValue).reduce((a, b) => a + (parseInt(b) || 0), 0) :
+                    0;
+                html += `
+                        <div class="active-marking-preview" style="${
+                    totalTokens > 0 ? '' : 'display: none;'}">
+                            <kbd>Фишек: <span class="tokens-count-value">${totalTokens}</span></kbd>
+                        </div>
+                    `;
+            }
+            html += `</div>`;
+
+        } else if (fieldType === 'description') {
+            html += `<p>ℹ️ ${fieldName}</p>`;
+
+        } else if (fieldType === 'dict') {
+            html += `<select id="param-field-${
+                fieldId}" onchange="window.updateAnalysisParamValue('${fieldId}', this.value)">`;
+            html += `<option value="">-- Выберите --</option>`;
+            if (field.options && typeof field.options === 'object') {
+                Object.entries(field.options).forEach(([k, v]) => {
+                    const isSel = String(savedValue) === String(k) ? 'selected' : '';
+                    html += `<option value="${k}" ${isSel}>${v}</option>`;
+                });
+            }
+            html += `</select>`;
+
+        } else if (fieldType === 'number') {
+            html += `<input type="number" id="param-field-${fieldId}" value="${
+                savedValue}" oninput="window.updateAnalysisParamValue('${fieldId}', this.value)">`;
+
+        } else {
+            html += `<input type="text" id="param-field-${fieldId}" value="${
+                savedValue}" oninput="window.updateAnalysisParamValue('${fieldId}', this.value)">`;
+        }
+
+        html += `</div>`;
+    });
+
+    dynamicContainer.innerHTML = html;
+};

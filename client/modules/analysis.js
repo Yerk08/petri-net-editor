@@ -3,7 +3,8 @@
  * @brief Модуль интеграции подсистемы анализа сетей Петри.
  */
 
-import {getAnalysisSession, getAnalysisState, getState, setAnalysisState, setDefaultServer} from './state.js';
+import {render, renderDynamicFields} from './render.js';
+import {createTokensSnapshot, getAnalysisSession, getAnalysisState, getState, restoreTokensFromSnapshot, setAnalysisState, setDefaultServer, visibleColors} from './state.js';
 import {saveToLocalStorage} from './storage.js';
 
 let currentAbortController = null;
@@ -137,81 +138,13 @@ export async function updateAnalysisType(value) {
     saveToLocalStorage();
 }
 
+
 /**
  * @brief Вспомогательный метод для загрузки и сохранения схемы полей в state.analysis.
  */
 async function loadParamSchema(typeId) {
     const serverUrl = getAnalysisSession().defaultServer.replace(/\/+$/, '');
     if (!serverUrl || !typeId) return;
-
-    const renderDynamicFields = (serverSchema, currentAnalysis) => {
-        const dynamicContainer = document.getElementById('analysis-dynamic-container');
-        if (!dynamicContainer || !serverSchema || !Array.isArray(serverSchema)) return;
-
-        let html = '';
-        serverSchema.forEach(field => {
-            const fieldId = field.id;
-            const fieldName = field.name;
-            const fieldType = field.type;
-            const savedValue = currentAnalysis.params?.[fieldId] ?? '';
-
-            html += `<div class="property-group">`;
-            if (fieldType !== 'description') {
-                html += `<label><b>${fieldName}:</b></label>`;
-            }
-
-            if (fieldType === 'list') {
-                html += `<div class="param-group-list" id="param-group-${fieldId}">`;
-                if (Array.isArray(field.options)) {
-                    field.options.forEach(opt => {
-                        const isChecked =
-                            Array.isArray(savedValue) && savedValue.includes(opt.value) ?
-                            'checked' :
-                            '';
-                        html += `
-                            <label>
-                                <input type="checkbox" value="${opt.value}" ${isChecked} 
-                                    onchange="window.updateAnalysisParamGroup('${fieldId}', '${
-                            opt.value}', this.checked)">
-                                ${opt.name}
-                            </label>
-                        `;
-                    });
-                }
-                html += `</div>`;
-
-            } else if (fieldType === 'description') {
-                html += `<p>ℹ️ ${fieldName}</p>`;
-
-            } else if (fieldType === 'dict') {
-                html += `<select id="param-field-${
-                    fieldId}" onchange="window.updateAnalysisParamValue('${
-                    fieldId}', this.value)">`;
-                html += `<option value="">-- Выберите --</option>`;
-                if (field.options && typeof field.options === 'object') {
-                    Object.entries(field.options).forEach(([k, v]) => {
-                        const isSel = String(savedValue) === String(k) ? 'selected' : '';
-                        html += `<option value="${k}" ${isSel}>${v}</option>`;
-                    });
-                }
-                html += `</select>`;
-
-            } else if (fieldType === 'number') {
-                html += `<input type="number" id="param-field-${fieldId}" value="${
-                    savedValue}" oninput="window.updateAnalysisParamValue('${
-                    fieldId}', this.value)">`;
-
-            } else {
-                html += `<input type="text" id="param-field-${fieldId}" value="${
-                    savedValue}" oninput="window.updateAnalysisParamValue('${
-                    fieldId}', this.value)">`;
-            }
-
-            html += `</div>`;
-        });
-
-        dynamicContainer.innerHTML = html;
-    };
 
     try {
         const response = await fetch(`${serverUrl}/api/v1/get_schema?id=${typeId}`);
@@ -231,8 +164,6 @@ async function loadParamSchema(typeId) {
         }
     }
 }
-
-
 
 /**
  * @brief Обновляет значение одиночного динамического параметра в состоянии анализа.
@@ -276,4 +207,175 @@ export function updateAnalysisParamGroup(fieldId, optionValue, isChecked) {
 
     setAnalysisState(currentAnalysis);
     saveToLocalStorage();
+}
+
+
+/**
+ * @brief Включает или выключает режим захвата/изменения цветов для конкретного аргумента анализа.
+ * @param {string} fieldId - Уникальный идентификатор поля из схемы.
+ */
+export function toggleAnalysisColorCapture(fieldId) {
+    const session = getAnalysisSession();
+    const currentAnalysis = getAnalysisState();
+
+    const isClosing = (session.selectedElement === fieldId);
+    if (!currentAnalysis.params) currentAnalysis.params = {};
+
+    if (!isClosing && session.selectedElement) {
+        const oldElement = session.selectedElement;
+        if (session.isMarkingSetMode) {
+            toggleAnalysisMarkingCapture(oldElement); // Закрываем режим разметки старого поля
+        } else if (session.isColorSetMode) {
+            toggleAnalysisColorCapture(oldElement);   // Закрываем режим цвета старого поля
+        }
+    }
+
+    if (isClosing) {
+        currentAnalysis.params[fieldId] =
+            Object.keys(visibleColors).filter(color => visibleColors[color]);
+        setAnalysisState(currentAnalysis);
+        saveToLocalStorage();
+
+        session.selectedElement = null;
+        session.isColorSetMode = false;
+        document.body.classList.remove('mode-analysis-color');
+    } else {
+        if (!session.backupColors) {
+            session.backupColors = Object.keys(visibleColors).filter(color => visibleColors[color]);
+        }
+
+        const savedColors = currentAnalysis.params[fieldId] || [];
+        Object.keys(visibleColors).forEach(color => {
+            visibleColors[color] = savedColors.includes(color);
+        });
+
+        session.selectedElement = fieldId;
+        session.isColorSetMode = true;
+        document.body.classList.add('mode-analysis-color');
+    }
+
+    if (isClosing && session.backupColors) {
+        Object.keys(visibleColors).forEach(color => {
+            visibleColors[color] = session.backupColors.includes(color);
+        });
+        session.backupColors = null;
+    }
+
+    Object.keys(visibleColors).forEach(color => {
+        const chk = document.getElementById(`chk-filter-${color}`);
+        if (chk) chk.checked = visibleColors[color];
+    });
+
+    if (currentAnalysis.serverSchema) {
+        renderDynamicFields(currentAnalysis.serverSchema, currentAnalysis);
+    }
+    render();
+}
+
+
+/**
+ * @brief Переключает интерактивный режим изменения и захвата разметки позиций для анализа.
+ * @param {string} fieldId - Уникальный идентификатор поля из схемы.
+ */
+export function toggleAnalysisMarkingCapture(fieldId) {
+    const session = getAnalysisSession();
+    const currentAnalysis = getAnalysisState();
+
+    const isClosing = (session.selectedElement === fieldId && session.isMarkingSetMode);
+    if (!currentAnalysis.params) currentAnalysis.params = {};
+
+    if (!isClosing && session.selectedElement) {
+        const oldElement = session.selectedElement;
+        if (session.isMarkingSetMode) {
+            toggleAnalysisMarkingCapture(oldElement); // Закрываем режим разметки старого поля
+        } else if (session.isColorSetMode) {
+            toggleAnalysisColorCapture(oldElement);   // Закрываем режим цвета старого поля
+        }
+    }
+
+    if (isClosing) {
+        currentAnalysis.params[fieldId] = createTokensSnapshot();
+        setAnalysisState(currentAnalysis);
+        saveToLocalStorage();
+
+        if (session.backupMarking) restoreTokensFromSnapshot(session.backupMarking);
+        session.selectedElement = null;
+        session.isMarkingSetMode = false;
+        session.backupMarking = null;
+
+    } else {
+        session.backupMarking = createTokensSnapshot();
+        if (currentAnalysis.params[fieldId] &&
+            typeof currentAnalysis.params[fieldId] === 'object') {
+            restoreTokensFromSnapshot(currentAnalysis.params[fieldId]);
+        }
+
+        session.selectedElement = fieldId;
+        session.isMarkingSetMode = true;
+    }
+
+    if (currentAnalysis.serverSchema) {
+        renderDynamicFields(currentAnalysis.serverSchema, currentAnalysis);
+    }
+    render();
+}
+
+/**
+ * @brief Заполняет параметр разметки значениями initialTokens из всех существующих позиций.
+ */
+export function resetAnalysisMarkingToInitial(fieldId) {
+    if (!confirm(
+            'Вы уверены, что хотите восстановить разметку для анализа из исходных настроек позиций холста?'))
+        return;
+
+    const currentAnalysis = getAnalysisState();
+    if (!currentAnalysis.params) currentAnalysis.params = {};
+
+    const markingSnapshot = {};
+    getState().places.forEach(p => {
+        markingSnapshot[p.uuid] = p.initialTokens !== undefined ? p.initialTokens : p.tokens;
+    });
+
+    currentAnalysis.params[fieldId] = markingSnapshot;
+    setAnalysisState(currentAnalysis);
+    saveToLocalStorage();
+
+    const session = getAnalysisSession();
+    if (session.selectedElement === fieldId && session.isMarkingSetMode) {
+        restoreTokensFromSnapshot(markingSnapshot);
+    }
+
+    if (currentAnalysis.serverSchema) {
+        renderDynamicFields(currentAnalysis.serverSchema, currentAnalysis);
+    }
+}
+
+/**
+ * @brief Обнуляет все фишки в разметке параметров анализа.
+ */
+export function clearAnalysisMarkingToEmpty(fieldId) {
+    if (!confirm(
+            'Вы уверены, что хотите сделать разметку для анализа абсолютно пустой (0 фишек во всех позициях)?'))
+        return;
+
+    const currentAnalysis = getAnalysisState();
+    if (!currentAnalysis.params) currentAnalysis.params = {};
+
+    const markingSnapshot = {};
+    getState().places.forEach(p => {
+        markingSnapshot[p.uuid] = 0;
+    });
+
+    currentAnalysis.params[fieldId] = markingSnapshot;
+    setAnalysisState(currentAnalysis);
+    saveToLocalStorage();
+
+    const session = getAnalysisSession();
+    if (session.selectedElement === fieldId && session.isMarkingSetMode) {
+        restoreTokensFromSnapshot(markingSnapshot);
+    }
+
+    if (currentAnalysis.serverSchema) {
+        renderDynamicFields(currentAnalysis.serverSchema, currentAnalysis);
+    }
 }

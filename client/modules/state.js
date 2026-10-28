@@ -41,6 +41,7 @@ let analysisSession = {
     isAnalysisMode: false,    ///< Флаг активного режима анализа
     defaultServer: '',        ///< Сервер для запросов по умолчанию (сохраняется)
     isMarkingSetMode: false,  ///< Флаг режима задания разметки
+    isColorSetMode: false,    ///< Флаг режима задания цветов
     selectedElement: null     ///< Выбранный элемент для установки значения
 }
 
@@ -125,7 +126,20 @@ export function setMode(mode) {
     }
     if (currentMode === 'analysis' && mode !== 'analysis') {
         resetSimulation();
+        if (Array.isArray(analysisSession.backupColors)) {
+            Object.keys(visibleColors).forEach(color => {
+                visibleColors[color] = analysisSession.backupColors.includes(color);
+                const chk = document.getElementById(`chk-filter-${color}`);
+                if (chk) chk.checked = visibleColors[color];
+            });
+        }
         analysisSession.isAnalysisMode = false;
+        analysisSession.isMarkingSetMode = false;
+        analysisSession.isColorSetMode = false;
+        analysisSession.selectedElement = null;
+        analysisSession.backupColors = null;
+        analysisSession.backupMarking = null;
+        document.body.classList.remove('mode-analysis-color'); 
         selectObject(null);
     }
 
@@ -168,7 +182,7 @@ export function setMode(mode) {
 }
 
 
-function createTokensSnapshot() {
+export function createTokensSnapshot() {
     const snapshot = {};
     state.places.forEach(p => {
         snapshot[p.uuid] = p.tokens;
@@ -176,7 +190,7 @@ function createTokensSnapshot() {
     return snapshot;
 }
 
-function restoreTokensFromSnapshot(snapshot) {
+export function restoreTokensFromSnapshot(snapshot) {
     if (!snapshot) return;
     state.places.forEach(p => {
         if (snapshot[p.uuid] !== undefined) {

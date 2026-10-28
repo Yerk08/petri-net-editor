@@ -144,7 +144,6 @@ kbd {
     box-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
     color: #333;
     display: inline-block;
-    font-size: 0.85em;
     font-weight: 700;
     line-height: 1;
     padding: 2px 5px;
@@ -253,7 +252,7 @@ body.mode-simulation svg {
 }
 
 body.mode-simulation .place {
-    cursor: default;
+    cursor: pointer;
 }
 
 .color-dimmed {
@@ -429,4 +428,20 @@ body.mode-simulation .place {
     border-radius: 0 4px 4px 0;
     margin: 4px 0 0 0;
     line-height: 1.4;
+}
+
+/* Позиция подсвечивается голубым, когда включен режим задания разметки анализа */
+.place.marking-enabled {
+    fill: #e6f2ff !important;
+    stroke: #007bff !important;
+    stroke-width: 2.5px;
+    cursor: pointer;
+}
+
+/* Подсветка блока выбора цветов слева, когда активен режим isColorSetMode */
+body.mode-analysis-color .color-filter-box {
+    border: 2px solid #007bff;
+    box-shadow: 0 0 8px rgba(0, 123, 255, 0.4);
+    background: #f0f7ff;
+    transition: all 0.2s ease-in-out;
 }
