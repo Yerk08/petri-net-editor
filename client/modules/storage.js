@@ -8,7 +8,7 @@
 import {selectObject} from '../editor.js';
 
 import {render} from './render.js';
-import {getAnalysisSession, getCleanState, replaceState, resetSimulation, setDefaultServer} from './state.js';
+import {getAnalysisSession, getCleanState, getDispatcherView, replaceState, resetSimulation, setDefaultServer, setDispatcherTasks} from './state.js';
 
 
 // --- LOCAL STORAGE ---
@@ -35,6 +35,9 @@ export function saveToLocalStorage() {
 
         const serverUrl = getAnalysisSession().defaultServer;
         localStorage.setItem('analysis_server_save', JSON.stringify(serverUrl));
+
+        const dispatcherTasks = getDispatcherView().tasks;
+        localStorage.setItem('dispatcher_tasks_save', JSON.stringify(dispatcherTasks));
     };
 
     if (remaining <= 0) {
@@ -50,6 +53,14 @@ export function loadFromLocalStorage() {
         const url = JSON.parse(savedServer);
         if (url) {
             setDefaultServer(url);
+        }
+    }
+
+    const dispatcherTasks = localStorage.getItem('dispatcher_tasks_save');
+    if (dispatcherTasks) {
+        const tasks = JSON.parse(dispatcherTasks);
+        if (tasks) {
+            setDispatcherTasks(tasks);
         }
     }
 

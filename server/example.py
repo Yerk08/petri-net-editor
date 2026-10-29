@@ -125,9 +125,9 @@ def submit_task():
     else:
         short_res = "Анализ успешно выполнен."
 
-    # Сохраняем задачу со статусом вычисления 'processing'
+    # Сохраняем задачу со статусом вычисления 'active'
     TASKS_DB[task_id] = {
-        "status": "processing",
+        "status": "active",
         "created_at": time.time(),
         "type": analysis_type,
         "short_result": short_res
@@ -147,7 +147,7 @@ def check_task():
 
     # Имитируем фоновые вычисления: первые 4 секунды после создания задача находится в обработке
     elapsed_time = time.time() - task["created_at"]
-    if task["status"] == "processing" and elapsed_time > 3.0:
+    if task["status"] == "active" and elapsed_time > 3.0:
         task["status"] = "ready" if hash(task_id) % 2 == 0 else "failed"
         print(f"[Task {task_id}] Расчеты завершены! Статус изменен на '{task["status"]}'.")
 
@@ -175,6 +175,155 @@ def cancel_task():
     
     return jsonify({"error": "Task not found"}), 404
 
+
+from flask import request, render_template_string
+@app.route('/api/v1/get_full_result', methods=['GET'])
+def get_full_result():
+    task_id = request.args.get('taskId')
+    task = TASKS_DB.get(task_id)
+
+    if not task:
+        return "<h3>Ошибка: Задача не найдена или была удалена из памяти сервера.</h3>", 404
+
+    # Извлекаем данные для построения отчета
+    status = task["status"]
+    analysis_type = task["type"]
+    params = task.get("params", {})
+    
+    # Ищем человекочитаемое имя типа анализа
+    type_name = next((t["name"] for t in ANALYSIS_TYPES if t["id"] == analysis_type), "Неизвестный анализ")
+
+    # Извлекаем список переходов (если он был сгенерирован и передан во фронтенде прямо в params)
+    transitions_table_rows = ""
+    for field_id, value in params.items():
+        if isinstance(value, list) and len(value) > 0 and isinstance(value[0], dict):
+            for idx, trans in enumerate(value):
+                inputs_str = ", ".join(trans.get("inputs", [])) or "∅"
+                outputs_str = ", ".join(trans.get("outputs", [])) or "∅"
+                transitions_table_rows += f"""
+                <tr>
+                    <td><code>{field_id}</code></td>
+                    <td><b>{trans.get('name', f'T_{idx}')}</b></td>
+                    <td style="color: #0056b3; font-style: italic;">{inputs_str}</td>
+                    <td style="color: #0056b3; font-style: italic;">{outputs_str}</td>
+                </tr>
+                """
+
+    if not transitions_table_rows:
+        transitions_table_rows = "<tr><td colspan='4' style='text-align:center; color:#888;'>Структурные цветовые фильтры не передавались или граф пуст</td></tr>"
+
+    # HTML-шаблон со встроенными стилями для рендеринга внутри iframe
+    html_template = """
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+        <meta charset="UTF-8">
+        <title>Отчет об анализе сети Петри</title>
+        <style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                line-height: 1.5; padding: 20px; color: #333; background-color: #fff; margin: 0;
+            }
+            .header { border-bottom: 2px solid #007bff; margin-bottom: 20px; padding-bottom: 10px; }
+            .header h1 { margin: 0 0 5px 0; font-size: 1.8em; color: #007bff; }
+            .status-badge {
+                display: inline-block; padding: 4px 12px; font-weight: bold; border-radius: 12px; font-size: 0.9em;
+            }
+            .status-ready { background-color: #d4edda; color: #155724; }
+            .status-active { background-color: #fff3cd; color: #856404; }
+            .status-failed { background-color: #f8d7da; color: #721c24; }
+            .status-cancelled { background-color: #e2e3e5; color: #383d41; }
+            
+            .section { margin-top: 25px; }
+            .section h3 { margin: 0 0 10px 0; border-bottom: 1px solid #eee; padding-bottom: 5px; color: #555; }
+            
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9em; }
+            th, td { border: 1px solid #dee2e6; padding: 8px 12px; text-align: left; }
+            th { background-color: #f8f9fa; color: #495057; }
+            tr:nth-child(even) { background-color: #fcfcfc; }
+            
+            code { background-color: #f1f3f5; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.95em; }
+            .log-box { background: #212529; color: #f8f9fa; padding: 15px; border-radius: 4px; font-family: monospace; font-size: 0.85em; white-space: pre-wrap; overflow-x: auto; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>📄 Детальный отчет: {{ type_name }}</h1>
+            <div>
+                ID задачи: <code>{{ task_id }}</code> | 
+                Статус: <span class="status-badge status-{{ status }}">{{ status }}</span>
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>📌 Краткое резюме</h3>
+            <p style="font-size: 1.1em; font-weight: 500; color: #2b2b2b;">
+                {{ task.get('short_result', task.get('error', 'Информация отсутствует.')) }}
+            </p>
+        </div>
+
+        <div class="section">
+            <h3>⚙️ Конфигурация параметров алгоритма</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Идентификатор поля</th>
+                        <th>Значение (Переданные настройки)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for k, v in params.items() %}
+                        {% if v is not iterable or v is string %}
+                        <tr>
+                            <td><code>{{ k }}</code></td>
+                            <td>{{ v }}</td>
+                        </tr>
+                        {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h3>🔀 Извлеченная структура переходов (Мультимножества)</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Родительское поле</th>
+                        <th>Название перехода</th>
+                        <th>Входное мультимножество (Inputs)</th>
+                        <th>Выходное мультимножество (Outputs)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{ transitions_table_rows|safe }}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h3>💻 Машинные логи выполнения</h3>
+            <div class="log-box">[INFO] {{ task.get('created_at') }} - Инициализация подсистемы расчетов сетей Петри.
+[INFO] Парсинг конфигурационной матрицы инцидентности завершен.
+[DEBUG] Найдено параметров в стэке: {{ params|length }}.
+[INFO] Построение дерева состояний...
+{% if status == 'ready' %}[SUCCESS] Вычисления завершены успешно. Код возврата: 0.
+{% elif status == 'failed' %}[ERROR] Ошибка выполнения: Крах инвариантного уравнения. Код возврата: 1.
+{% else %}[WARNING] Задача была принудительно прервана или находится в обработке.{% endif %}</div>
+        </div>
+    </body>
+    </html>
+    """
+
+    return render_template_string(
+        html_template, 
+        task_id=task_id, 
+        task=task, 
+        status=status, 
+        type_name=type_name, 
+        params=params, 
+        transitions_table_rows=transitions_table_rows
+    )
 
 if __name__ == '__main__':
     print("Сервер анализа сетей Петри запущен!")

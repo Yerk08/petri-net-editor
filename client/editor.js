@@ -6,7 +6,7 @@
  */
 
 import {clearAnalysisMarkingToEmpty, loadAnalysisTypes, onServerUrlInput, resetAnalysisMarkingToInitial, submitAnalysisTask, toggleAnalysisColorCapture, toggleAnalysisMarkingCapture, updateAnalysisParamGroup, updateAnalysisParamValue, updateAnalysisType, updateConnectionIndicator} from './modules/analysis.js';
-import {cancelAnalysisTask, viewInDispatcher} from './modules/dispatcher.js';
+import {cancelAnalysisTask, cancelAnalysisTaskById, openDetailedResult, closeDispatcher, closeDetailedResult, clearAllDispatcherTasks} from './modules/dispatcher.js';
 import {onCanvasMouseDown, onCanvasMouseMove, onNodeMouseDown, onNodeMouseMove, onNodeMouseUp} from './modules/events.js';
 import {initHotKeys} from './modules/hotkeys.js';
 import {render, renderAnalysisTaskControl} from './modules/render.js';
@@ -237,7 +237,11 @@ window.submitAnalysisTask = submitAnalysisTask;
 
 window.renderAnalysisTaskControl = renderAnalysisTaskControl;
 window.cancelAnalysisTask = cancelAnalysisTask;
-window.viewInDispatcher = viewInDispatcher;
+window.cancelAnalysisTaskById = cancelAnalysisTaskById;
+window.closeDispatcher = closeDispatcher
+window.openDetailedResult = openDetailedResult;
+window.closeDetailedResult = closeDetailedResult;
+window.clearAllDispatcherTasks = clearAllDispatcherTasks;
 
 window.exportToFile = exportToFile;
 window.importFromFile = importFromFile;

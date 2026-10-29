@@ -3,11 +3,9 @@
  * @brief Модуль интеграции подсистемы анализа сетей Петри.
  */
 
-import {selectObject} from '../editor.js';
-
 import {startPolling} from './dispatcher.js';
 import {render, renderAnalysisTaskControl, renderDynamicFields} from './render.js';
-import {createTokensSnapshot, getAnalysisSession, getAnalysisState, getState, restoreTokensFromSnapshot, setAnalysisState, setDefaultServer, visibleColors} from './state.js';
+import {createTokensSnapshot, getAnalysisSession, getAnalysisState, getState, pushDispatcherTask, restoreTokensFromSnapshot, setAnalysisState, setDefaultServer, visibleColors} from './state.js';
 import {saveToLocalStorage} from './storage.js';
 
 let currentAbortController = null;
@@ -53,6 +51,8 @@ export function onServerUrlInput(value) {
  * @brief Асинхронно загружает доступные типы анализа с сервера.
  */
 export async function loadAnalysisTypes() {
+    clearTimeout(analysisTimeout);
+
     const serverInput = document.getElementById('analysis-server-input');
     const selectEl = document.getElementById('analysis-type-select');
     if (!selectEl || !serverInput) return;
@@ -62,8 +62,6 @@ export async function loadAnalysisTypes() {
         selectEl.innerHTML = '<option value="">Укажите адрес сервера</option>';
         return;
     }
-
-    clearTimeout(analysisTimeout);
 
     if (currentAbortController) currentAbortController.abort();
     currentAbortController = new AbortController();
@@ -529,6 +527,14 @@ export async function submitAnalysisTask() {
             session.taskId = data.taskId;
             session.taskStatus = 'active';
             session.shortResult = null;
+
+            pushDispatcherTask({
+                taskId: data.taskId,
+                serverUrl: serverUrl,
+                typeName: currentAnalysis.selectedTypeName || 'Анализ',
+                taskStatus: 'active',
+                shortResult: null
+            });
 
             renderAnalysisTaskControl();
             startPolling(data.taskId, serverUrl);

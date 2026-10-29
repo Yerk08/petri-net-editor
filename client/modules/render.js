@@ -450,7 +450,7 @@ export function renderAnalysisTaskControl() {
                     </button>
                 ` :
                                                                ''}
-                <button class="btn-secondary" style="flex: 1; margin: 0; padding: 6px; background: #e2e3e5; color: #383d41;" onclick="window.viewInDispatcher()">
+                <button class="btn-secondary" style="flex: 1; margin: 0; padding: 6px; background: #e2e3e5; color: #383d41;" onclick="window.setMode('dispatcher')">
                     📊 В диспетчер
                 </button>
             </div>

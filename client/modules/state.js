@@ -49,6 +49,16 @@ let analysisSession = {
     shortResult: null  ///< Короткий ответ на текущую задачу анализа
 }
 
+/**
+ * @brief Объект состояния всех запущенных анализов. Не экспортируется.
+ */
+let dispatcherView = {
+    isDispatcherMode: false,      ///< Флаг активного режима диспетчера анализов
+    isDetailedResultMode: false,  ///< Флаг активного режима просмотра результатов
+    tasks: [
+    ]  ///< Список всех задач: { taskId, serverUrl, typeName, taskStatus, shortResult, timestamp }
+}
+
 
 export let currentMode =
     'select';  ///< select, simulation, place, transition, arc, token, comment, analysis, dispatcher
@@ -67,6 +77,7 @@ export let visibleColors = {
 };
 
 import {render, updatePropertyWhileSimulation} from './render.js';
+import {viewInDispatcher, closeDispatcher, closeDetailedResult} from './dispatcher.js';
 import {selectObject} from '../editor.js';
 
 export function setSelectedId(id) {
@@ -94,21 +105,41 @@ export function getAnalysisSession() {
 export function setDefaultServer(url) {
     analysisSession.defaultServer = url;
 }
+
 export function getAnalysisState() {
     return state.analysis ?
         state.analysis :
         {selectedType: '', selectedTypeName: '', serverSchema: null, params: {}};
 }
-
 export function setAnalysisState(analysis) {
     state.analysis = analysis;
 }
+
+export function getDispatcherView() {
+    return dispatcherView;
+}
+export function setDispatcherTasks(tasks) {
+    dispatcherView.tasks = tasks;
+}
+
 /**
  * @brief Полностью заменяет текущее состояние сети (используется при импорте).
  * @param {Object} newState - Новый объект состояния.
  */
 export function replaceState(newState) {
     state = newState;
+}
+
+/**
+ * @brief Добавляет или обновляет задачу в общем реестре диспетчера.
+ */
+export function pushDispatcherTask(task) {
+    const index = dispatcherView.tasks.findIndex(t => t.taskId === task.taskId);
+    if (index !== -1) {
+        dispatcherView.tasks[index] = {...dispatcherView.tasks[index], ...task};
+    } else {
+        dispatcherView.tasks.unshift({timestamp: new Date().toLocaleTimeString(), ...task});
+    }
 }
 
 
@@ -123,6 +154,8 @@ export function replaceState(newState) {
  * - Обратите внимание на логику сброса/сохранения маркеров при переключении `simulation`.
  */
 export function setMode(mode) {
+    const svgCanvas = document.getElementById('petri-svg');
+
     // Автоматический сброс к начальной разметке при выходе из симуляции
     if (currentMode === 'simulation' && mode !== 'simulation') {
         resetSimulation();
@@ -147,6 +180,11 @@ export function setMode(mode) {
         document.body.classList.remove('mode-analysis-color');
         selectObject(null);
     }
+    if (currentMode === 'dispatcher' && mode !== 'dispatcher') {
+        closeDispatcher();
+        closeDetailedResult();
+        selectObject(null);
+    }
 
     // Вход в режим симуляции
     if (mode === 'simulation') {
@@ -159,6 +197,11 @@ export function setMode(mode) {
         if (currentMode !== 'analysis') {
             analysisSession.isAnalysisMode = true;
         }
+        selectObject(null);
+    }
+    if (mode === 'dispatcher') {
+        dispatcherView.isDispatcherMode = true;
+        if (svgCanvas) svgCanvas.style.display = 'none';
         selectObject(null);
     }
 
@@ -183,7 +226,11 @@ export function setMode(mode) {
     document.body.classList.toggle('mode-simulation', isSim);
 
     arcSourceId = null;
-    render();
+    if (mode === 'dispatcher') {
+        viewInDispatcher();
+    } else {
+        render();
+    }
 }
 
 
