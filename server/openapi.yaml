@@ -1,0 +1,197 @@
+openapi: 3.0.3
+info:
+  title: Mock Petri Net Analysis API
+  description: Минимальный mock-сервер для симуляции анализа сетей Петри с поддержкой двух сценариев.
+  version: 1.0.0
+servers:
+  - url: http://127.0.0.1:5000/mock/api
+    description: Локальный mock-сервер
+
+paths:
+  /get_types:
+    get:
+      summary: Получить список доступных типов анализа
+      description: Возвращает массив с доступными сценариями анализа (успешный и ошибочный).
+      responses:
+        '200':
+          description: Успешный ответ со списком типов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      example: "some_1"
+                    name:
+                      type: string
+                      example: "Успешный анализ (Сценарий 1)"
+
+  /get_schema:
+    get:
+      summary: Получить схему параметров для формы
+      description: Возвращает набор полей ввода в зависимости от выбранного ID анализа.
+      parameters:
+        - name: id
+          in: query
+          required: true
+          description: Идентификатор анализа (some_1 или some_2)
+          schema:
+            type: string
+            example: "some_1"
+      responses:
+        '200':
+          description: Успешный возврат схемы компонентов формы
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      example: "param_num"
+                    name:
+                      type: string
+                      example: "Числовой параметр (number)"
+                    type:
+                      type: string
+                      example: "number"
+                    options:
+                      type: object
+                      description: Дополнительные опции для типов dict или list
+                      additionalProperties:
+                        type: string
+
+  /submit_task:
+    post:
+      summary: Отправить задачу на выполнение
+      description: Инициализирует задачу анализа и возвращает её taskId.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - analysis_type
+              properties:
+                analysis_type:
+                  type: string
+                  example: "some_1"
+                params:
+                  type: object
+                  description: Произвольный объект с параметрами из схемы
+                  example:
+                    param_num: 42
+                    param_str: "тестовая строка"
+      responses:
+        '200':
+          description: Задача успешно создана
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  taskId:
+                    type: string
+                    example: "a1b2c3d4"
+        '400':
+          description: Не передан обязательный параметр analysis_type
+
+  /check_task:
+    get:
+      summary: Проверить статус выполнения (Polling)
+      description: Возвращает текущий статус задачи. Через 3 секунды после создания переводит some_1 в статус ready, а some_2 в статус failed.
+      parameters:
+        - name: taskId
+          in: query
+          required: true
+          description: Идентификатор проверяемой задачи
+          schema:
+            type: string
+            example: "a1b2c3d4"
+      responses:
+        '200':
+          description: Статус задачи успешно получен
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                properties:
+                  status:
+                    type: string
+                    enum: [active, ready, failed, cancelled]
+                    example: "ready"
+                  short_result:
+                    type: string
+                    description: Присутствует, если статус 'ready'
+                    example: "Анализ успешно завершен (Да)."
+                  error:
+                    type: string
+                    description: Присутствует, если статус 'failed'
+                    example: "Критический сбой: Анализ не может быть выполнен"
+        '404':
+          description: Задача с таким ID не найдена
+
+  /cancel_task:
+    post:
+      summary: Отменить выполнение задачи
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - taskId
+              properties:
+                taskId:
+                  type: string
+                  example: "a1b2c3d4"
+      responses:
+        '200':
+          description: Задача успешно отменена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                    example: "Task cancelled"
+        '404':
+          description: Задача не найдена
+
+  /get_full_result:
+    get:
+      summary: Получить полноценный HTML-отчет
+      description: Возвращает сгенерированную веб-страницу с детальным описанием переданных параметров.
+      parameters:
+        - name: taskId
+          in: query
+          required: true
+          description: Идентификатор выполненной задачи
+          schema:
+            type: string
+            example: "a1b2c3d4"
+      responses:
+        '200':
+          description: HTML страница отчета
+          content:
+            text/html:
+              schema:
+                type: string
+                example: "<!DOCTYPE html><html><body>...</body></html>"
+        '404':
+          description: Задача не найдена
+        '500':
+          description: Страница ошибки для упавших задач (Сценарий 2)

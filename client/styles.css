@@ -429,7 +429,6 @@ body.mode-simulation .place {
 /* Позиция подсвечивается голубым, когда включен режим задания разметки анализа */
 .place.marking-enabled {
     fill: #e6f2ff !important;
-    stroke: #007bff !important;
     stroke-width: 2.5px;
     cursor: pointer;
 }
