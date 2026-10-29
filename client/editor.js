@@ -6,7 +6,7 @@
  */
 
 import {clearAnalysisMarkingToEmpty, loadAnalysisTypes, onServerUrlInput, resetAnalysisMarkingToInitial, submitAnalysisTask, toggleAnalysisColorCapture, toggleAnalysisMarkingCapture, updateAnalysisParamGroup, updateAnalysisParamValue, updateAnalysisType, updateConnectionIndicator} from './modules/analysis.js';
-import {cancelAnalysisTask, cancelAnalysisTaskById, openDetailedResult, closeDispatcher, closeDetailedResult, clearAllDispatcherTasks} from './modules/dispatcher.js';
+import {cancelAnalysisTask, cancelAnalysisTaskById, clearAllDispatcherTasks, closeDetailedResult, closeDispatcher, openDetailedResult} from './modules/dispatcher.js';
 import {onCanvasMouseDown, onCanvasMouseMove, onNodeMouseDown, onNodeMouseMove, onNodeMouseUp} from './modules/events.js';
 import {initHotKeys} from './modules/hotkeys.js';
 import {render, renderAnalysisTaskControl} from './modules/render.js';
@@ -90,24 +90,26 @@ export function selectObject(id) {
             const serverUrl = getAnalysisSession().defaultServer || '';
 
             let html = `
-                <div class="property-group">
-                    <h3>Адрес сервера</h3>
-                    <input type="text" id="analysis-server-input" value="${serverUrl}" 
-                        oninput="window.onServerUrlInput(this.value)">
-                </div>
-                
-                <div class="property-group">
-                    <h3>Вид анализа</h3>
-                    <select id="analysis-type-select" onchange="window.updateAnalysisType(this.value)">
-                        ${
+                <div class="analysis-base-group">
+                    <div class="property-group">
+                        <h3>Адрес сервера</h3>
+                        <input type="text" id="analysis-server-input" value="${serverUrl}" 
+                            oninput="window.onServerUrlInput(this.value)">
+                    </div>
+                    
+                    <div class="property-group">
+                        <h3>Вид анализа</h3>
+                        <select id="analysis-type-select" onchange="window.updateAnalysisType(this.value)">
+                            ${
                 currentAnalysis.selectedType ?
                     `<option value="${currentAnalysis.selectedType}" selected>${
                         currentAnalysis.selectedTypeName}</option>` :
                     '<option value="">Укажите адрес сервера</option>'}
-                    </select>
-                </div>
+                        </select>
+                    </div>
 
-                <div id="analysis-task-control-root"></div>
+                    <div id="analysis-task-control-root"></div>
+                </div>
 
                 <div id="analysis-dynamic-container" class="analysis-dynamic-params"></div>
             `;
