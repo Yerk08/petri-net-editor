@@ -440,7 +440,7 @@ function buildTransitionsList(allowedColors) {
         const tColor = t.color || 'black';
         if (!allowedColors.includes(tColor)) return;
 
-        const inputs = [];
+        const inputs = {}; 
         state.arcs.filter(a => a.targetId === t.uuid).forEach(a => {
             const arcColor = a.color || 'black';
             if (!allowedColors.includes(arcColor)) return;
@@ -450,13 +450,12 @@ function buildTransitionsList(allowedColors) {
                 const placeColor = srcPlace.color || 'black';
                 if (!allowedColors.includes(placeColor)) return;
 
-                for (let i = 0; i < (a.weight || 1); i++) {
-                    inputs.push(srcPlace.name);
-                }
+                const weight = a.weight || 1;
+                inputs[srcPlace.name] = (inputs[srcPlace.name] || 0) + weight;
             }
         });
 
-        const outputs = [];
+        const outputs = {};
 
         state.arcs.filter(a => a.sourceId === t.uuid).forEach(a => {
             const arcColor = a.color || 'black';
@@ -467,9 +466,8 @@ function buildTransitionsList(allowedColors) {
                 const placeColor = tgtPlace.color || 'black';
                 if (!allowedColors.includes(placeColor)) return;
 
-                for (let i = 0; i < (a.weight || 1); i++) {
-                    outputs.push(tgtPlace.name);
-                }
+                const weight = a.weight || 1;
+                outputs[tgtPlace.name] = (outputs[tgtPlace.name] || 0) + weight;
             }
         });
         transitionsList.push({name: t.name, inputs: inputs, outputs: outputs});
