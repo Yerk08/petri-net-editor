@@ -42,8 +42,13 @@ let analysisSession = {
     defaultServer: '',        ///< Сервер для запросов по умолчанию (сохраняется)
     isMarkingSetMode: false,  ///< Флаг режима задания разметки
     isColorSetMode: false,    ///< Флаг режима задания цветов
-    selectedElement: null     ///< Выбранный элемент для установки значения
+    selectedElement: null,    ///< Выбранный элемент для установки значения
+
+    taskId: null,      ///< Текущий номер обрабатываемой сервером задачи
+    taskStatus: null,  ///< Состояние текущей задачи
+    shortResult: null  ///< Короткий ответ на текущую задачу анализа
 }
+
 
 export let currentMode =
     'select';  ///< select, simulation, place, transition, arc, token, comment, analysis, dispatcher
@@ -139,7 +144,7 @@ export function setMode(mode) {
         analysisSession.selectedElement = null;
         analysisSession.backupColors = null;
         analysisSession.backupMarking = null;
-        document.body.classList.remove('mode-analysis-color'); 
+        document.body.classList.remove('mode-analysis-color');
         selectObject(null);
     }
 

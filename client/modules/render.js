@@ -7,7 +7,7 @@
 
 import {selectObject} from '../editor.js';
 
-import {arcSourceId, currentMode, findNode, getColorDimClass, getState, isTransitionEnabled, selectedId, getAnalysisSession} from './state.js';
+import {arcSourceId, currentMode, findNode, getAnalysisSession, getColorDimClass, getState, isTransitionEnabled, selectedId} from './state.js';
 import {saveToLocalStorage} from './storage.js';
 
 const svg = document.getElementById('petri-svg');
@@ -198,7 +198,8 @@ export function render() {
         const textMarkup = renderMultilineSVGText(p.name, p.x, p.y - 25);
 
         const session = getAnalysisSession();
-        const markingClass = (session.isAnalysisMode && session.isMarkingSetMode) ? 'marking-enabled' : '';
+        const markingClass =
+            (session.isAnalysisMode && session.isMarkingSetMode) ? 'marking-enabled' : '';
 
         const markup = `
     <g class="${dimClass}" onpointerdown="onNodeMouseDown(event, '${p.uuid}')">
@@ -295,9 +296,11 @@ export function updatePropertyWhileSimulation() {
 
 
 /**
- * @brief Динамически генерирует и отрисовывает параметры запроса анализа на основе полученной схемы.
+ * @brief Динамически генерирует и отрисовывает параметры запроса анализа на основе полученной
+ * схемы.
  * @param {Array} serverSchema - Массив объектов описания полей (схема), полученный от сервера.
- * @param {Object} currentAnalysis - Текущее состояние (стейт) подсистемы анализа с сохраненными параметрами.
+ * @param {Object} currentAnalysis - Текущее состояние (стейт) подсистемы анализа с сохраненными
+ *     параметрами.
  */
 export function renderDynamicFields(serverSchema, currentAnalysis) {
     const dynamicContainer = document.getElementById('analysis-dynamic-container');
@@ -418,4 +421,63 @@ export function renderDynamicFields(serverSchema, currentAnalysis) {
     });
 
     dynamicContainer.innerHTML = html;
-};
+}
+
+/**
+ * @brief Функция микрорендера для точечного обновления блока управления задачей.
+ * @details Блок ниже кнопки "Анализ" показывает статус последней созданной задачи.
+ */
+export function renderAnalysisTaskControl() {
+    const root = document.getElementById('analysis-task-control-root');
+    if (!root) return;
+
+    const session = getAnalysisSession();
+
+    let html = `
+        <div class="property-group">
+            <button class="btn-primary" onclick="window.submitAnalysisTask()">
+                ${session.taskId ? '🔄 Анализ' : '🚀 Анализ'}
+            </button>
+        </div>
+
+        ${
+        session.taskId ? `
+            <div class="property-group flex-row" style="display: flex; gap: 8px; margin-top: 8px;">
+                ${
+                             session.taskStatus === 'active' ? `
+                    <button class="btn-danger" style="flex: 1; margin: 0; padding: 6px;" onclick="window.cancelAnalysisTask()">
+                        🛑 Отменить
+                    </button>
+                ` :
+                                                               ''}
+                <button class="btn-secondary" style="flex: 1; margin: 0; padding: 6px; background: #e2e3e5; color: #383d41;" onclick="window.viewInDispatcher()">
+                    📊 В диспетчер
+                </button>
+            </div>
+        ` :
+                         ''}
+
+        ${
+        session.shortResult ? (() => {
+            const isError = session.taskStatus === 'failed' || session.taskStatus === 'error';
+
+            const bgColor = isError ? '#f8d7da' : '#bff9cd';
+            const title = isError ? 'Ошибка' : 'Результат';
+
+            return `
+                <div class="property-group alert-result" style="padding: 10px; border-radius: 4px;
+                background: ${bgColor}; border: 1px solid;">
+                    <h3>${title}</h3>
+                    <h4>${session.shortResult}</h4>
+                </div>
+            `;
+        })() :
+                              ''}
+    `;
+
+    root.innerHTML = html;
+    const serverInput = document.getElementById('analysis-server-input');
+    const typeSelect = document.getElementById('analysis-type-select');
+    if (serverInput) serverInput.disabled = false;
+    if (typeSelect) typeSelect.disabled = false;
+}

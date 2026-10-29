@@ -5,10 +5,11 @@
  *          интерактивной панелью свойств элементов и координирует инициализацию приложения.
  */
 
-import {loadAnalysisTypes, onServerUrlInput, toggleAnalysisColorCapture, updateAnalysisParamGroup, updateAnalysisParamValue, updateAnalysisType, updateConnectionIndicator, toggleAnalysisMarkingCapture, resetAnalysisMarkingToInitial, clearAnalysisMarkingToEmpty} from './modules/analysis.js';
+import {clearAnalysisMarkingToEmpty, loadAnalysisTypes, onServerUrlInput, resetAnalysisMarkingToInitial, submitAnalysisTask, toggleAnalysisColorCapture, toggleAnalysisMarkingCapture, updateAnalysisParamGroup, updateAnalysisParamValue, updateAnalysisType, updateConnectionIndicator} from './modules/analysis.js';
+import {cancelAnalysisTask, viewInDispatcher} from './modules/dispatcher.js';
 import {onCanvasMouseDown, onCanvasMouseMove, onNodeMouseDown, onNodeMouseMove, onNodeMouseUp} from './modules/events.js';
 import {initHotKeys} from './modules/hotkeys.js';
-import {render} from './modules/render.js';
+import {render, renderAnalysisTaskControl} from './modules/render.js';
 import {applySimulationState, clearPetriNet, currentMode, deleteObject, findComment, findNode, fireTransition, getAnalysisSession, getAnalysisState, getSimulation, getState, redoTransition, resetSimulation, selectedId, setMode, setSelectedId, toggleFilterColor, undoTransition, updateArcWeight, updateCommentText, updateElementColor, updateName, updateTokens} from './modules/state.js';
 import {exportToFile, exportToPDF, exportToSVG, importFromFile, loadFromLocalStorage} from './modules/storage.js';
 import {loadToggleTheme, toggleTheme} from './modules/theme.js';
@@ -105,12 +106,17 @@ export function selectObject(id) {
                     '<option value="">Укажите адрес сервера</option>'}
                     </select>
                 </div>
-                
+
+                <div id="analysis-task-control-root"></div>
+
                 <div id="analysis-dynamic-container" class="analysis-dynamic-params"></div>
             `;
 
             panel.innerHTML = html;
             setTimeout(() => {
+                if (typeof window.renderAnalysisTaskControl === 'function') {
+                    window.renderAnalysisTaskControl();
+                }
                 if (typeof window.loadAnalysisTypes === 'function') {
                     window.loadAnalysisTypes();
                 }
@@ -227,6 +233,11 @@ window.toggleAnalysisColorCapture = toggleAnalysisColorCapture;
 window.toggleAnalysisMarkingCapture = toggleAnalysisMarkingCapture;
 window.resetAnalysisMarkingToInitial = resetAnalysisMarkingToInitial;
 window.clearAnalysisMarkingToEmpty = clearAnalysisMarkingToEmpty;
+window.submitAnalysisTask = submitAnalysisTask;
+
+window.renderAnalysisTaskControl = renderAnalysisTaskControl;
+window.cancelAnalysisTask = cancelAnalysisTask;
+window.viewInDispatcher = viewInDispatcher;
 
 window.exportToFile = exportToFile;
 window.importFromFile = importFromFile;

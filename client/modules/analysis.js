@@ -3,7 +3,10 @@
  * @brief Модуль интеграции подсистемы анализа сетей Петри.
  */
 
-import {render, renderDynamicFields} from './render.js';
+import {selectObject} from '../editor.js';
+
+import {startPolling} from './dispatcher.js';
+import {render, renderAnalysisTaskControl, renderDynamicFields} from './render.js';
 import {createTokensSnapshot, getAnalysisSession, getAnalysisState, getState, restoreTokensFromSnapshot, setAnalysisState, setDefaultServer, visibleColors} from './state.js';
 import {saveToLocalStorage} from './storage.js';
 
@@ -103,11 +106,12 @@ export async function loadAnalysisTypes() {
         console.error('Ошибка при загрузке видов анализа:', error);
 
         updateConnectionIndicator('offline');
-        const rootAnalysis = getState().analysis; 
+        const rootAnalysis = getState().analysis;
         if (rootAnalysis && rootAnalysis.selectedType) {
             setAnalysisState(rootAnalysis);
             const currentAnalysis = getAnalysisState();
-            selectEl.innerHTML = `<option value="${currentAnalysis.selectedType}" selected>${currentAnalysis.selectedTypeName || 'Сохраненный анализ'}</option>`;
+            selectEl.innerHTML = `<option value="${currentAnalysis.selectedType}" selected>${
+                currentAnalysis.selectedTypeName || 'Сохраненный анализ'}</option>`;
             loadParamSchema(currentAnalysis.selectedType);
         } else {
             selectEl.innerHTML = '<option value="">Сервер недоступен</option>';
@@ -116,45 +120,6 @@ export async function loadAnalysisTypes() {
         analysisTimeout = setTimeout(() => loadAnalysisTypes(), 5000);
     }
 }
-
-/**
- * @brief Динамически обновляет тип анализа и запрашивает его схему полей.
- */
-export async function updateAnalysisType(value) {
-    const session = getAnalysisSession();
-    const oldElement = session.selectedElement;
-    if (session.isMarkingSetMode) {
-        toggleAnalysisMarkingCapture(oldElement);  // Закрываем режим разметки старого поля
-    } else if (session.isColorSetMode) {
-        toggleAnalysisColorCapture(oldElement);  // Закрываем режим цвета старого поля
-    }
-
-    if (!value) {
-        if (getState().analysis) {
-            delete getState().analysis;
-        }
-        const dynamicContainer = document.getElementById('analysis-dynamic-container');
-        if (dynamicContainer) dynamicContainer.innerHTML = '';
-    } else {
-        const selectEl = document.getElementById('analysis-type-select');
-        let typeName = '';
-        if (selectEl && selectEl.selectedOptions && selectEl.selectedOptions[0]) {
-            typeName = selectEl.selectedOptions[0].text;
-        }
-
-        setAnalysisState(
-            {selectedType: value, selectedTypeName: typeName, serverSchema: null, params: {}});
-
-        let dynamicContainer = document.getElementById('analysis-dynamic-container');
-        if (dynamicContainer) {
-            dynamicContainer.innerHTML = '<p>⏳ Загрузка параметров...</p>';
-        }
-        await loadParamSchema(value);
-    }
-
-    saveToLocalStorage();
-}
-
 
 /**
  * @brief Вспомогательный метод для загрузки и сохранения схемы полей в state.analysis.
@@ -175,6 +140,7 @@ async function loadParamSchema(typeId) {
         } else {
             throw new Error(`Ошибка сервера: ${response.status}`);
         }
+
     } catch (e) {
         console.warn('Не удалось загрузить схему параметров с сервера, используем сохраненную:', e);
         const currentAnalysis = getAnalysisState();
@@ -182,6 +148,54 @@ async function loadParamSchema(typeId) {
             renderDynamicFields(currentAnalysis.serverSchema, currentAnalysis);
         }
     }
+}
+
+
+
+/**
+ * @brief Динамически обновляет тип анализа и запрашивает его схему полей.
+ */
+export async function updateAnalysisType(value) {
+    const session = getAnalysisSession();
+    const oldElement = session.selectedElement;
+    if (session.isMarkingSetMode) {
+        toggleAnalysisMarkingCapture(oldElement);  // Закрываем режим разметки старого поля
+    } else if (session.isColorSetMode) {
+        toggleAnalysisColorCapture(oldElement);  // Закрываем режим цвета старого поля
+    }
+
+    // Очистка значения старых анализов
+    session.taskId = null;
+    session.taskStatus = null;
+    session.shortResult = null;
+    renderAnalysisTaskControl();
+
+    // Само обновление вида анализа
+    if (!value) {
+        if (getState().analysis) {
+            delete getState().analysis;
+        }
+        const dynamicContainer = document.getElementById('analysis-dynamic-container');
+        if (dynamicContainer) dynamicContainer.innerHTML = '';
+
+    } else {
+        const selectEl = document.getElementById('analysis-type-select');
+        let typeName = '';
+        if (selectEl && selectEl.selectedOptions && selectEl.selectedOptions[0]) {
+            typeName = selectEl.selectedOptions[0].text;
+        }
+
+        setAnalysisState(
+            {selectedType: value, selectedTypeName: typeName, serverSchema: null, params: {}});
+
+        let dynamicContainer = document.getElementById('analysis-dynamic-container');
+        if (dynamicContainer) {
+            dynamicContainer.innerHTML = '<p>⏳ Загрузка параметров...</p>';
+        }
+        await loadParamSchema(value);
+    }
+
+    saveToLocalStorage();
 }
 
 /**
@@ -227,7 +241,6 @@ export function updateAnalysisParamGroup(fieldId, optionValue, isChecked) {
     setAnalysisState(currentAnalysis);
     saveToLocalStorage();
 }
-
 
 /**
  * @brief Включает или выключает режим захвата/изменения цветов для конкретного аргумента анализа.
@@ -290,7 +303,6 @@ export function toggleAnalysisColorCapture(fieldId) {
     }
     render();
 }
-
 
 /**
  * @brief Переключает интерактивный режим изменения и захвата разметки позиций для анализа.
@@ -407,5 +419,128 @@ export function clearAnalysisMarkingToEmpty(fieldId) {
 
     if (currentAnalysis.serverSchema) {
         renderDynamicFields(currentAnalysis.serverSchema, currentAnalysis);
+    }
+}
+
+
+
+/**
+ * @brief Генерирует плоский список переходов для конкретного набора разрешенных цветов.
+ * @details Учитывает цвета самого перехода, дуг и позиций, отсекая только не подходящие по цвету
+ * связи.
+ * @param {string[]} allowedColors - Массив названий цветов (например, ['red', 'blue']).
+ */
+function buildTransitionsList(allowedColors) {
+    if (!Array.isArray(allowedColors) || allowedColors.length === 0) {
+        return [];
+    }
+
+    const state = getState();
+    const transitionsList = [];
+
+    state.transitions.forEach(t => {
+        const tColor = t.color || 'black';
+        if (!allowedColors.includes(tColor)) return;
+
+        const inputs = [];
+        state.arcs.filter(a => a.targetId === t.uuid).forEach(a => {
+            const arcColor = a.color || 'black';
+            if (!allowedColors.includes(arcColor)) return;
+
+            const srcPlace = state.places.find(p => p.uuid === a.sourceId);
+            if (srcPlace) {
+                const placeColor = srcPlace.color || 'black';
+                if (!allowedColors.includes(placeColor)) return;
+
+                for (let i = 0; i < (a.weight || 1); i++) {
+                    inputs.push(srcPlace.name);
+                }
+            }
+        });
+
+        const outputs = [];
+
+        state.arcs.filter(a => a.sourceId === t.uuid).forEach(a => {
+            const arcColor = a.color || 'black';
+            if (!allowedColors.includes(arcColor)) return;
+
+            const tgtPlace = state.places.find(p => p.uuid === a.targetId);
+            if (tgtPlace) {
+                const placeColor = tgtPlace.color || 'black';
+                if (!allowedColors.includes(placeColor)) return;
+
+                for (let i = 0; i < (a.weight || 1); i++) {
+                    outputs.push(tgtPlace.name);
+                }
+            }
+        });
+        transitionsList.push({name: t.name, inputs: inputs, outputs: outputs});
+    });
+
+    return transitionsList;
+}
+
+/**
+ * @brief Собирает полные данные анализа и отправляет задачу на сервер обработки.
+ */
+export async function submitAnalysisTask() {
+    const currentAnalysis = getAnalysisState();
+    const typeId = currentAnalysis.selectedType;
+    if (!typeId) {
+        alert('Пожалуйста, выберите вид анализа.');
+        return;
+    }
+
+    const serverUrl = getAnalysisSession().defaultServer.replace(/\/+$/, '');
+    if (!serverUrl) {
+        alert('Укажите адрес сервера.');
+        return;
+    }
+
+    updateConnectionIndicator('loading');
+    const payload = {analysis_type: typeId, params: structuredClone(currentAnalysis.params || {})};
+
+    const params = currentAnalysis.params || {};
+    const validColors = ['black', 'red', 'blue', 'green'];
+
+    Object.keys(params).forEach(fieldId => {
+        const value = params[fieldId];
+        if (Array.isArray(value) && value.length > 0) {
+            const isColorFilter = value.every(item => validColors.includes(item));
+            if (isColorFilter) {
+                payload.params[fieldId] = buildTransitionsList(value);
+            }
+        }
+    });
+
+
+    try {
+        const response = await fetch(`${serverUrl}/api/v1/submit_task`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        if (!response.ok) throw new Error(`Ошибка создания задачи: ${response.status}`);
+
+        const data = await response.json();
+        if (data && data.taskId) {
+            const session = getAnalysisSession();
+            // Запоминаем задачу
+            session.taskId = data.taskId;
+            session.taskStatus = 'active';
+            session.shortResult = null;
+
+            renderAnalysisTaskControl();
+            startPolling(data.taskId, serverUrl);
+        } else {
+            throw new Error('Сервер не вернул taskId');
+        }
+        updateConnectionIndicator('online');
+
+    } catch (error) {
+        console.error('Ошибка при отправке задачи анализа:', error);
+        alert(`Не удалось отправить задачу: ${error.message}`);
+        updateConnectionIndicator('offline');
+        analysisTimeout = setTimeout(() => loadAnalysisTypes(), 5000);
     }
 }
