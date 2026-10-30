@@ -2,6 +2,10 @@
 client/doc/
 server/doc/
 
+client/tests/node_modules
+client/tests/package-lock.json
+client/tests/coverage
+
 # --- Системные папки редакторов кода ---
 .vscode/
 .idea/
