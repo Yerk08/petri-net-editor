@@ -10,8 +10,16 @@ import {saveToLocalStorage} from './storage.js';
 
 
 let pollingTimeoutsMap = new Map();
+
 /**
- * @brief Запускает адаптивный интервальный опрос состояния задачи.
+ * @brief Адаптивный лонг-поллинг (Exponential Backoff) состояния задачи на сервере.
+ * @async
+ * @param {string} taskId ID задачи.
+ * @param {string} serverUrl URL сервера.
+ * @param {number} [currentDelay=500] Задержка опроса.
+ * @note **Зависимости:** Вызывает `updateConnectionIndicator()` (`analysis.js`) при сбоях. Меняет
+ * сессию и реестр через `pushDispatcherTask()` (`state.js`). Триггерит рендеры
+ * `renderAnalysisTaskControl()` и `viewInDispatcher()`.
  */
 export function startPolling(taskId, serverUrl, currentDelay = 500) {
     if (pollingTimeoutsMap.has(taskId)) {
@@ -76,7 +84,12 @@ export function startPolling(taskId, serverUrl, currentDelay = 500) {
 }
 
 /**
- * @brief Безопасно отменяет выбранную задачу по её ID (из панели или из диспетчера).
+ * @brief Отменяет задачу на сервере и останавливает её локальный таймер.
+ * @async
+ * @param {string} targetTaskId ID отменяемой задачи.
+ * @note **Зависимости:** Удаляет таймер из `pollingTimeoutsMap`. Индицирует фазы через
+ * `updateConnectionIndicator()` (`analysis.js`). Меняет статус в `getDispatcherView()` (`state.js`)
+ * и форсирует перерисовку UI.
  */
 export async function cancelAnalysisTaskById(targetTaskId) {
     const dView = getDispatcherView();
@@ -125,7 +138,10 @@ export async function cancelAnalysisTaskById(targetTaskId) {
 }
 
 /**
- * @brief Совместимая обертка для отмены текущей сессионной задачи.
+ * @brief Обертка для отмены текущей активной сессионной задачи.
+ * @async
+ * @note **Зависимости:** Считывает `taskId` из `getAnalysisSession()` (`state.js`) и перенаправляет
+ * вызов в `cancelAnalysisTaskById()`.
  */
 export async function cancelAnalysisTask() {
     const session = getAnalysisSession();
@@ -137,7 +153,10 @@ export async function cancelAnalysisTask() {
 
 
 /**
- * @brief Генерирует интерфейс Диспетчера задач на месте SVG холста.
+ * @brief Отрисовывает полноэкранный интерфейс Диспетчера задач поверх SVG-холста.
+ * @note **Зависимости:** Считывает задачи из `getDispatcherView()` (`state.js`), блокирует рендер
+ * холста (`isDispatcherMode = true`). Каскадно запускает автоопрос через
+ * `initActiveTasksPolling()`.
  */
 export function viewInDispatcher() {
     const dView = getDispatcherView();
@@ -212,8 +231,10 @@ export function viewInDispatcher() {
 }
 
 /**
- * @brief Автоматически запускает цикл опроса для всех незавершенных задач из реестра,
- *        если для них еще не запущен персональный таймер.
+ * @brief Автоматически возобновляет опрос для всех незавершенных задач в реестре.
+ * @private
+ * @note **Зависимости:** Фильтрует задачи со статусом active/pending из `getDispatcherView()`
+ * (`state.js`) и инициализирует для них сетевой конвейер `startPolling()`.
  */
 function initActiveTasksPolling() {
     const dView = getDispatcherView();
@@ -228,7 +249,10 @@ function initActiveTasksPolling() {
 }
 
 /**
- * @brief Полностью очищает список задач диспетчера с подтверждением и сохранением.
+ * @brief Очищает историю диспетчера и принудительно останавливает все таймеры.
+ * @note **Зависимости:** Сбрасывает таймауты в `pollingTimeoutsMap`. Очищает данные в
+ * `getDispatcherView()` и `getAnalysisSession()` (`state.js`). Сохраняет состояние через
+ * `saveToLocalStorage()` и обновляет UI.
  */
 export function clearAllDispatcherTasks() {
     const dView = getDispatcherView();
@@ -254,7 +278,12 @@ export function clearAllDispatcherTasks() {
 }
 
 /**
- * @brief Добавляет существующую задачу по ID в диспетчер для ручного отслеживания.
+ * @brief Регистрирует произвольный ID задачи для ручного отслеживания.
+ * @note Добавление этой функции в UI признано излишним, поэтому такая кнопка отсутствует, тем не
+ * менее она полностью поддерживается и работает корректно.
+ * @note **Зависимости:** Читает хост из `getAnalysisSession()` (`state.js`), добавляет задачу в
+ * реестр через `pushDispatcherTask()`, фиксирует в `saveToLocalStorage()`, запускает слежение через
+ * `startPolling()` и обновляет Диспетчер.
  */
 export function trackTaskByIdManual() {
     const inputEl = document.getElementById('manual-task-id-input');
@@ -300,7 +329,9 @@ export function trackTaskByIdManual() {
 }
 
 /**
- * @brief Закрывает оверлей диспетчера задач.
+ * @brief Закрывает оверлей диспетчера и восстанавливает отображение SVG-холста сети.
+ * @note **Зависимости:** Сбрасывает флаг режима в `getDispatcherView()` (`state.js`). Вызывается из
+ * координатора режимов `setMode()` (`state.js`).
  */
 export function closeDispatcher() {
     const overlay = document.getElementById('dispatcher-overlay');
@@ -314,7 +345,11 @@ export function closeDispatcher() {
 };
 
 /**
- * @brief Открывает окно подробного просмотра результатов задачи со встроенным iframe.
+ * @brief Открывает iframe с подробным HTML-отчетом о результатах задачи.
+ * @param {string} taskId ID задачи.
+ * @param {string} serverUrl URL сервера.
+ * @note **Зависимости:** Переводит состояние диспетчера в `isDetailedResultMode = true`
+ * (`state.js`) и монтирует iframe, запрашивающий эндпоинт `/api/v1/get_full_result`.
  */
 export function openDetailedResult(taskId, serverUrl) {
     const dView = getDispatcherView();
@@ -339,7 +374,10 @@ export function openDetailedResult(taskId, serverUrl) {
 }
 
 /**
- * @brief Закрывает окно подробного просмотра результатов задачи
+ * @brief Закрывает окно детального отчета и возвращает пользователя к списку задач.
+ * @note **Зависимости:** Удаляет DOM-окно отчета и сбрасывает флаг `isDetailedResultMode` в
+ * `getDispatcherView()` (`state.js`). Вызывается автоматически при экстренной смене режимов в
+ * `state.js`.
  */
 export function closeDetailedResult() {
     const dView = getDispatcherView();

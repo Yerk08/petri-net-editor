@@ -317,6 +317,11 @@ export function findComment(id) {
  * таймера перехода.
  */
 export function isTransitionEnabled(transId) {
+    const transition = state.transitions.find(t => t.uuid === transId);
+    if (!transition || getColorDimClass(transition.color) === 'color-dimmed') {
+        return false;
+    }
+    
     // Выбираем только те входящие дуги, у которых источник (позиция) является видимым
     const inArcs = state.arcs.filter(a => {
         if (a.targetId !== transId) return false;

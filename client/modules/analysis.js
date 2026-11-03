@@ -12,7 +12,21 @@ let currentAbortController = null;
 let analysisTimeout = null;
 
 /**
- * @brief Управляет визуальным индикатором статуса подключения к серверу.
+ * @brief Управляет визуальным индикатором статуса подключения к серверу анализа.
+ *
+ * @details Находит или динамически внедряет DOM-элемент индикатора рядом с текстовым полем ввода
+ * URL. Отражает текущую фазу взаимодействия с API.
+ *
+ * @param {string} status Состояние соединения:
+ * - `'loading'`: выполняется сетевой запрос (`fetch` типов, схем или отправка задачи).
+ * - `'online'`: успешный ответ от API (HTTP 200).
+ * - `'offline'`: сетевой сбой, недоступность хоста или HTTP-ошибка.
+ *
+ * @note **Взаимосвязь с модулями:**
+ * - Вызывается внутри `loadAnalysisTypes()`, `loadParamSchema()` и `submitAnalysisTask()` для
+ * индикации локальных операций.
+ * - **Сквозная зависимость:** Вызывается из `dispatcher.js` (`startPolling()`,
+ * `cancelAnalysisTaskById()`) при изменении фаз выполнения фоновых задач на сервере.
  */
 export function updateConnectionIndicator(status) {
     let indicator = document.getElementById('analysis-server-indicator');
@@ -36,7 +50,19 @@ export function updateConnectionIndicator(status) {
 }
 
 /**
- * @brief Обработчик изменения текстового поля адреса сервера.
+ * @brief Обработчик изменения текстового поля адреса сервера анализа.
+ *
+ * @details Фиксирует введенный адрес в сессионном состоянии приложения и сбрасывает предыдущие
+ * таймеры опроса, предотвращая конкуренцию запросов (дебаунс 600 мс). По истечении таймаута
+ * инициирует опрос эндпоинта.
+ *
+ * @param {string} value Сырой URL-адрес сервера из UI (например, `http://localhost:8080`).
+ *
+ * @note **Взаимосвязь с модулями:**
+ * - Вызывает `setDefaultServer()` и `saveToLocalStorage()` из `state.js` и `storage.js` для
+ * персистентного сохранения хоста.
+ * - Вызывает `window.loadAnalysisTypes()` для мгновенной переинициализации списка доступных
+ * алгоритмов.
  */
 export function onServerUrlInput(value) {
     setDefaultServer(value);
@@ -48,7 +74,25 @@ export function onServerUrlInput(value) {
 }
 
 /**
- * @brief Асинхронно загружает доступные типы анализа с сервера.
+ * @brief Асинхронно загружает доступные типы анализа с удаленного сервера.
+ *
+ * @details Реализует циклическое обновление списка доступных анализов (Long-polling).
+ * Безопасно отменяет предыдущий незавершенный запрос через `AbortController` перед отправкой
+ * нового. В случае успеха строит HTML-опции для `<select>` и синхронизирует сохраненный выбранный
+ * тип. При ошибке сети переходит в отказоустойчивый режим: если в `state` есть сохраненная
+ * конфигурация, отображает её, переключая таймер на частые повторные попытки (5 сек) вместо
+ * стандартных (30 сек).
+ *
+ * @async
+ * @throws {Error} Выбрасывает исключение при не-200 статусе ответа сервера (обрабатывается в
+ *     catch-блоке).
+ *
+ * @note **Взаимосвязь с модулями:**
+ * - Читает состояние через `getAnalysisSession()`, `getAnalysisState()`, `getState()`.
+ * - Модифицирует DOM-структуру (`#analysis-type-select`), управляемую координатором `editor.js`.
+ * - **Сквозная зависимость:** Вызывает локальную функцию `loadParamSchema()` для развертывания
+ * полей параметров. При сбое отправки задачи в `submitAnalysisTask()` также перезапускает этот
+ * метод.
  */
 export async function loadAnalysisTypes() {
     clearTimeout(analysisTimeout);
@@ -120,7 +164,22 @@ export async function loadAnalysisTypes() {
 }
 
 /**
- * @brief Вспомогательный метод для загрузки и сохранения схемы полей в state.analysis.
+ * @brief Вспомогательный метод для загрузки и сохранения схемы полей параметров конкретного вида
+ * анализа.
+ *
+ * @details Запрашивает метаданные полей (`/api/v1/get_schema?id=...`) для динамического построения
+ * форм. При успешном ответе обновляет глобальный `state.analysis.serverSchema` и вызывает рендер
+ * полей. При сбое сети изолирует ошибку (превращает в `console.warn`) и пытается применить
+ * кэшированную схему из структуры состояния.
+ *
+ * @async
+ * @param {string} typeId Уникальный идентификатор алгоритма анализа на сервере.
+ *
+ * @note **Взаимосвязь с модулями:**
+ * - Вызывается каскадно из `loadAnalysisTypes()` (при инициализации сессии) и из
+ * `updateAnalysisType()` (при ручной смене алгоритма пользователем).
+ * - Напрямую вызывает `renderDynamicFields()` из `render.js` для перестроения UI параметров.
+ * - Записывает схему через `setAnalysisState()` и фиксирует изменения в `saveToLocalStorage()`.
  */
 async function loadParamSchema(typeId) {
     const serverUrl = getAnalysisSession().defaultServer.replace(/\/+$/, '');
@@ -151,7 +210,25 @@ async function loadParamSchema(typeId) {
 
 
 /**
- * @brief Динамически обновляет тип анализа и запрашивает его схему полей.
+ * @brief Динамически обновляет тип анализа в сессии и запрашивает его схему полей.
+ *
+ * @details Выполняет полный сброс контекста предыдущего анализа:
+ * 1. Инвалидирует интерактивные режимы захвата на холсте (сброс разметки/цветов старого поля).
+ * 2. Очищает идентификаторы и статусы фоновых серверных задач (`taskId`, `taskStatus`,
+ * `shortResult`).
+ * 3. Если тип сброшен в пустоту — удаляет узел `analysis` из глобального состояния сети Петри.
+ * 4. Если тип валиден — инициализирует структуру `params: {}` и заменяет контейнер параметров
+ * индикатором загрузки.
+ *
+ * @async
+ * @param {string} value Идентификатор выбранного типа анализа (или пустая строка для деактивации).
+ *
+ * @note **Взаимосвязь с модулями:**
+ * - Является триггером для `renderAnalysisTaskControl()` из `render.js`, скрывая элементы
+ * управления расчетами.
+ * - Вызывает `toggleAnalysisMarkingCapture()` и `toggleAnalysisColorCapture()` для безопасного
+ * выхода из интерактивных режимов.
+ * - Каскадно запускает `loadParamSchema()` для получения структуры полей нового алгоритма.
  */
 export async function updateAnalysisType(value) {
     const session = getAnalysisSession();
@@ -198,8 +275,14 @@ export async function updateAnalysisType(value) {
 
 /**
  * @brief Обновляет значение одиночного динамического параметра в состоянии анализа.
- * @param {string} paramId - Идентификатор параметра из схемы.
- * @param {any} value - Установленное значение.
+ *
+ * @param {string} paramId Идентификатор параметра из мета-схемы сервера.
+ * @param {any} value Новое значение (строка, число, булево).
+ *
+ * @note **Взаимосвязь с модулями:**
+ * - Вызывается из динамически сгенерированных инпутов, срендеренных через `render.js`.
+ * - Мутирует состояние через `setAnalysisState()` и форсирует перезапись хранилища через
+ * `saveToLocalStorage()`.
  */
 export function updateAnalysisParamValue(paramId, value) {
     const currentAnalysis = getAnalysisState();
@@ -214,9 +297,16 @@ export function updateAnalysisParamValue(paramId, value) {
 
 /**
  * @brief Обновляет массив значений для параметров типа список (группы чекбоксов).
- * @param {string} fieldId - Идентификатор поля из схемы.
- * @param {string} optionValue - Значение выбранного элемента.
- * @param {boolean} isChecked - Состояние флага (выбран или снят).
+ *
+ * @param {string} fieldId Идентификатор поля-массива из схемы параметров.
+ * @param {string} optionValue Значение флага/опции, подвергшееся изменению.
+ * @param {boolean} isChecked Новое состояние флага (true — добавлен в массив, false —
+ *     отфильтрован).
+ *
+ * @note **Взаимосвязь с модулями:**
+ * - Связан с чекбоксами в панели свойств (`editor.js` / `render.js`).
+ * - Изменяет целевой массив в `state.analysis.params` и выполняет фиксацию через
+ * `saveToLocalStorage()`.
  */
 export function updateAnalysisParamGroup(fieldId, optionValue, isChecked) {
     const currentAnalysis = getAnalysisState();
@@ -240,9 +330,24 @@ export function updateAnalysisParamGroup(fieldId, optionValue, isChecked) {
     saveToLocalStorage();
 }
 
+
 /**
  * @brief Включает или выключает режим захвата/изменения цветов для конкретного аргумента анализа.
- * @param {string} fieldId - Уникальный идентификатор поля из схемы.
+ *
+ * @details Реализует конечный автомат для интерактивного выбора цветов элементов сети.
+ * При активации делает бэкап текущих глобальных фильтров видимости холста (`visibleColors`) и
+ * переопределяет их сохраненными значениями этого параметра. При закрытии (повторный вызов для того
+ * же поля или при смене поля) считывает выбранные чекбоксы цветов, записывает их в параметр
+ * анализа, а глобальные фильтры холста восстанавливает из бэкапа.
+ *
+ * @param {string} fieldId Уникальный идентификатор поля-фильтра из схемы параметров.
+ *
+ * @note **Взаимосвязь с модулями:**
+ * - Обеспечивает взаимное исключение режимов: если запущен режим разметки, каскадно вызывает
+ * `toggleAnalysisMarkingCapture()`.
+ * - Управляет глобальной картой `visibleColors` в `state.js`, влияя на отрисовку сети.
+ * - Вызывает `renderDynamicFields()` и общий `render()` для обновления состояния чекбоксов и
+ * подсветки элементов на холсте SVG.
  */
 export function toggleAnalysisColorCapture(fieldId) {
     const session = getAnalysisSession();
@@ -304,7 +409,24 @@ export function toggleAnalysisColorCapture(fieldId) {
 
 /**
  * @brief Переключает интерактивный режим изменения и захвата разметки позиций для анализа.
- * @param {string} fieldId - Уникальный идентификатор поля из схемы.
+ *
+ * @details Позволяет пользователю кликами по холсту/позициям сформировать специфический вектор
+ * начальной разметки (токенов) для конкретного аргумента алгоритма анализа, не повреждая основную
+ * рабочую разметку сети Петри.
+ * - **Вход в режим:** Создает снимок текущих токенов сети в `backupMarking`, а на холст проецирует
+ * (восстанавливает) ранее сохраненное состояние фишек данного параметра (или инициализирует
+ * нулями).
+ * - **Выход из режима:** Делает снимок сформированной пользователем разметки
+ * (`createTokensSnapshot`), записывает его в параметры анализа, а реальные токены позиций холста
+ * откатывает назад из `backupMarking`.
+ *
+ * @param {string} fieldId Уникальный идентификатор поля разметки (`marking_filter`) из схемы.
+ *
+ * @note **Взаимосвязь с модулями:**
+ * - Принудительно закрывает конкурирующий режим цвета через `toggleAnalysisColorCapture()`.
+ * - Активно использует функции ядра `state.js`: `createTokensSnapshot()`,
+ * `restoreTokensFromSnapshot()`.
+ * - Форсирует перерисовку через `renderDynamicFields()`, `render()` и обновление полей свойств.
  */
 export function toggleAnalysisMarkingCapture(fieldId) {
     const session = getAnalysisSession();
@@ -361,7 +483,20 @@ export function toggleAnalysisMarkingCapture(fieldId) {
 }
 
 /**
- * @brief Заполняет параметр разметки значениями initialTokens из всех существующих позиций.
+ * @brief Восстанавливает разметку параметра анализа из исходных настроек позиций холста
+ * (`initialTokens`).
+ *
+ * @details Запрашивает подтверждение операции. Обходит все позиции в `state.places`, извлекает их
+ * базовые конфигурации фишек (`initialTokens` или текущие `tokens`) и формирует снимок параметров.
+ * Если режим разметки для данного поля сейчас активен на экране, изменения немедленно проецируются
+ * на холст.
+ *
+ * @param {string} fieldId Уникальный идентификатор изменяемого поля параметров.
+ *
+ * @note **Взаимосвязь с модулями:**
+ * - Читает данные из `getState().places` (`state.js`).
+ * - Вызывает `restoreTokensFromSnapshot()` при совпадении с активным `selectedElement` сессии.
+ * - Обновляет отображение через `renderDynamicFields()`.
  */
 export function resetAnalysisMarkingToInitial(fieldId) {
     if (!confirm(
@@ -391,7 +526,11 @@ export function resetAnalysisMarkingToInitial(fieldId) {
 }
 
 /**
- * @brief Обнуляет все фишки в разметке параметров анализа.
+ * @brief Обнуляет фишки (вектор 0) в параметрах анализа для указанного поля.
+ * @param {string} fieldId ID поля из схемы.
+ * @note **Зависимости:** Мутирует `state.places` (`state.js`), перезаписывает кэш через
+ * `saveToLocalStorage()`, синхронизирует холст через `restoreTokensFromSnapshot()` и обновляет
+ * интерфейс через `renderDynamicFields()`.
  */
 export function clearAnalysisMarkingToEmpty(fieldId) {
     if (!confirm(
@@ -423,10 +562,12 @@ export function clearAnalysisMarkingToEmpty(fieldId) {
 
 
 /**
- * @brief Генерирует плоский список переходов для конкретного набора разрешенных цветов.
- * @details Учитывает цвета самого перехода, дуг и позиций, отсекая только не подходящие по цвету
- * связи.
- * @param {string[]} allowedColors - Массив названий цветов (например, ['red', 'blue']).
+ * @brief Сериализует переходы сети Петри, фильтруя их по разрешенным цветам.
+ * @private
+ * @param {string[]} allowedColors Массив разрешенных цветов.
+ * @return {Object[]} Список переходов `[{name, inputs, outputs}]` с весами дуг.
+ * @note **Зависимости:** Читает сырую структуру сети через `getState()` (`state.js`). Вызывается
+ * строго внутри `submitAnalysisTask()` для сборки payload.
  */
 function buildTransitionsList(allowedColors) {
     if (!Array.isArray(allowedColors) || allowedColors.length === 0) {
@@ -440,7 +581,7 @@ function buildTransitionsList(allowedColors) {
         const tColor = t.color || 'black';
         if (!allowedColors.includes(tColor)) return;
 
-        const inputs = {}; 
+        const inputs = {};
         state.arcs.filter(a => a.targetId === t.uuid).forEach(a => {
             const arcColor = a.color || 'black';
             if (!allowedColors.includes(arcColor)) return;
@@ -477,7 +618,11 @@ function buildTransitionsList(allowedColors) {
 }
 
 /**
- * @brief Собирает полные данные анализа и отправляет задачу на сервер обработки.
+ * @brief Собирает данные сети и отправляет вычислительную задачу на сервер.
+ * @async
+ * @note **Зависимости:** Трансформирует граф через `buildTransitionsList()`. Регистрирует задачу в
+ * `state.js` через `pushDispatcherTask()`. Передает управление в `dispatcher.js` через
+ * `startPolling()`. Управляет индикацией `updateConnectionIndicator()`.
  */
 export async function submitAnalysisTask() {
     const currentAnalysis = getAnalysisState();
