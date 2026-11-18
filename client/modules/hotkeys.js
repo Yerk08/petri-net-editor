@@ -32,14 +32,17 @@ export function initHotKeys() {
         }
 
         const isCtrl = e.ctrlKey || e.metaKey;  // Поддержка Win/Linux (Ctrl) и Mac (Cmd)
-        const key = e.key.toLowerCase();
-        if (isCtrl && (key === 'r' || key === 't' || key === 'w' || key === 'i' || key === 'p')) {
-            return;  // Прерываем функцию и отдаем управление браузеру
+        const code = e.code;
+
+        // Системные комбинации браузера (обновление, новая вкладка, закрытие, печать и т.д.)
+        const browserCodes = ['KeyR', 'KeyT', 'KeyW', 'KeyI', 'KeyP'];
+        if (isCtrl && browserCodes.includes(code)) {
+            return;
         }
 
         // --- 1. ОПЕРАЦИИ СИМУЛЯЦИИ (Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y) ---
         if (currentMode === 'simulation' && isCtrl) {
-            if (e.key.toLowerCase() === 'z') {
+            if (code === 'KeyZ') {
                 e.preventDefault();
                 if (e.shiftKey) {
                     window.redoTransition();  // Ctrl + Shift + Z
@@ -48,7 +51,7 @@ export function initHotKeys() {
                 }
                 return;
             }
-            if (e.key.toLowerCase() === 'y') {
+            if (code === 'KeyY') {
                 e.preventDefault();
                 window.redoTransition();  // Ctrl + Y (альтернатива)
                 return;
@@ -58,7 +61,7 @@ export function initHotKeys() {
         // --- 2. КОПИРОВАНИЕ И ВСТАВКА ---
         if (isCtrl && currentMode !== 'simulation') {
             // Ctrl+C операция
-            if (e.key.toLowerCase() === 'c') {
+            if (code === 'KeyC') {
                 if (!selectedId) return;
                 const node = findNode(selectedId) || findComment(selectedId);
                 if (node) {
@@ -67,13 +70,10 @@ export function initHotKeys() {
                     const isTrans = getState().transitions.some(t => t.uuid === selectedId);
                     const type = isPlace ? 'place' : (isTrans ? 'transition' : 'comment');
 
-                    // Находим все дуги, которые связаны с этим копируемым узлом
                     const connectedArcs = getState().arcs.filter(
                         arc => arc.sourceId === selectedId || arc.targetId === selectedId);
                     clipboardData = {
-                        type: getState().places.some(p => p.uuid === selectedId)    ? 'place' :
-                            getState().transitions.some(t => t.uuid === selectedId) ? 'transition' :
-                                                                                      'comment',
+                        type: type,
                         sourceUuid: selectedId,
                         node: structuredClone(node),
                         arcs: structuredClone(connectedArcs)
@@ -83,7 +83,8 @@ export function initHotKeys() {
             }
 
             // Ctrl+V операция
-            if (e.key.toLowerCase() === 'v' && clipboardData) {
+            if (code === 'KeyV' && clipboardData) {
+                e.preventDefault(); // Добавлено, чтобы избежать лишних событий вставки
                 const newX = clipboardData.node.x + 40;
                 const newY = clipboardData.node.y + 40;
                 clipboardData.node.x = newX;
@@ -116,14 +117,12 @@ export function initHotKeys() {
                     selectObject(newUuid);
                 }
 
-                // Проверяем дуги, которые мы скопировали вместе с узлом
                 if (clipboardData.arcs && clipboardData.arcs.length > 0) {
                     clipboardData.arcs.forEach(oldArc => {
                         let shouldCreateArc = false;
                         let finalSourceId = oldArc.sourceId;
                         let finalTargetId = oldArc.targetId;
 
-                        // Если скопированная дуга шла ИЗ нашего старого узла
                         if (oldArc.sourceId === clipboardData.sourceUuid) {
                             finalSourceId = newUuid;
                             if (findNode(oldArc.targetId)) {
@@ -159,46 +158,52 @@ export function initHotKeys() {
         }
 
         // --- 3. УДАЛЕНИЕ ЭЛЕМЕНТОВ (Backspace / Delete) ---
-        if ((e.key === 'Backspace' || e.key === 'Delete') && selectedId) {
+        if ((code === 'Backspace' || code === 'Delete') && selectedId) {
             e.preventDefault();
             deleteObject(selectedId);
             return;
         }
 
         // --- 4. ПЕРЕКЛЮЧЕНИЕ РЕЖИМОВ ---
-        // Соответствует порядку: Select, Simulation, Place, Transition, Arc, Token, Comment, Analysis, Dispatcher
-        const modesMapping = {
-            'r': 'select',
-            's': 'simulation',
-            'd': 'place',
-            't': 'transition',
-            'a': 'arc',
-            'e': 'token',
-            'w': 'comment',
-            'f': 'analysis',
-            'v': 'dispatcher'
-        };
+        // Работает в любой раскладке и при включенном CapsLock, но только без зажатого Ctrl/Alt
+        if (!isCtrl && !e.altKey) {
+            const modesMapping = {
+                'KeyR': 'select',
+                'KeyS': 'simulation',
+                'KeyD': 'place',
+                'KeyT': 'transition',
+                'KeyA': 'arc',
+                'KeyE': 'token',
+                'KeyW': 'comment',
+                'KeyF': 'analysis',
+                'KeyV': 'dispatcher'
+            };
 
-        if (modesMapping[e.key]) {
-            e.preventDefault();
-            window.setMode(modesMapping[e.key]);
+            if (modesMapping[code]) {
+                e.preventDefault();
+                window.setMode(modesMapping[code]);
+                return;
+            }
         }
 
         // --- 5. ПЕРЕКЛЮЧЕНИЕ ФИЛЬТРОВ ЦВЕТОВ ---
-        // Соответствует порядку: 1 -> black, 2 -> red, 3 -> blue, 4 -> green
-        const colorsMapping = {'1': 'black', '2': 'red', '3': 'blue', '4': 'green'};
+        const colorsMapping = {
+            'Digit1': 'black',
+            'Digit2': 'red',
+            'Digit3': 'blue',
+            'Digit4': 'green'
+        };
 
-        if (colorsMapping[e.key]) {
+        if (colorsMapping[code]) {
             e.preventDefault();
-            const color = colorsMapping[e.key];
+            const color = colorsMapping[code];
             if (isCtrl) {  // Обновление цвета элемента
                 if (selectedId) {
                     window.updateElementColor(selectedId, color);
                     render();
                     window.selectObject(selectedId);
                 }
-
-            } else {  // Инвертирование состояние фильтра видимости на панели
+            } else {  // Инвертирование состояния фильтра видимости на панели
                 const checkbox = document.getElementById(`chk-filter-${color}`);
                 if (checkbox) {
                     checkbox.checked = !checkbox.checked;
