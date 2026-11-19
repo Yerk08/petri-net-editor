@@ -288,3 +288,122 @@ export function serializeSVG() {
 
     return {svgClone, width, height};
 }
+
+
+
+// --- ИНТЕГРАЦИЯ С GOOGLE AI (КОПИРОВАНИЕ И ВСТАВКА JSON) ---
+
+/**
+ * @brief Показывает короткое всплывающее уведомление в правом нижнем углу экрана.
+ * @param {string} message - Текст уведомления.
+ */
+function showToast(message) {
+    const toast = document.createElement('div');
+    toast.textContent = message;
+    Object.assign(toast.style, {
+        position: 'fixed',
+        bottom: '20px',
+        right: '20px',
+        background: '#323232',
+        color: '#ffffff',
+        padding: '10px 18px',
+        borderRadius: '6px',
+        fontSize: '14px',
+        zIndex: '99999',
+        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.25)',
+        opacity: '0',
+        transition: 'opacity 0.25s ease'
+    });
+
+    document.body.appendChild(toast);
+    requestAnimationFrame(() => {
+        toast.style.opacity = '1';
+    });
+
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 250);
+    }, 2500);
+}
+
+/**
+ * @brief Универсальное копирование текста в буфер обмена (работает на HTTP и HTTPS).
+ * @param {string} text - Строка для копирования.
+ */
+async function copyTextSafe(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+    }
+
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-9999px';
+    textArea.style.top = '-9999px';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+
+    try {
+        document.execCommand('copy');
+    } finally {
+        document.body.removeChild(textArea);
+    }
+}
+
+/**
+ * @brief Копирует чистый JSON текущей сети Петри в буфер обмена без лишнего текста и окон.
+ */
+export async function copyJSONToClipboard() {
+    const cleanJson = JSON.stringify(getCleanState(), null, 2);
+
+    try {
+        await copyTextSafe(cleanJson);
+        showToast('✅ Было скопировано');
+    } catch (err) {
+        console.warn('Не удалось скопировать в буфер:', err);
+        showToast('⚠️ Не удалось скопировать');
+    }
+}
+
+/**
+ * @brief Импортирует сеть Петри из буфера обмена (или через ручной ввод по HTTP) и обновляет холст.
+ */
+export async function pasteJSONFromClipboard() {
+    let text = '';
+
+    if (navigator.clipboard && window.isSecureContext) {
+        try {
+            text = await navigator.clipboard.readText();
+        } catch (err) {
+            console.warn('Доступ к буферу отклонен, переключаемся на ручной ввод:', err);
+        }
+    }
+
+    if (!text) {
+        text = window.prompt('Вставьте JSON (Ctrl+V):');
+        if (!text) return;
+    }
+
+    try {
+        const match = text.match(/\{[\s\S]*\}/);
+        if (!match) {
+            alert('В тексте не найден валидный JSON.');
+            return;
+        }
+
+        const importedState = JSON.parse(match);
+
+        if (importedState.places && importedState.transitions && importedState.arcs) {
+            replaceState(importedState);
+            selectObject(null);
+            render();
+            showToast('✅ Сеть загружена');
+        } else {
+            alert('JSON не соответствует формату сети Петри (нет places, transitions или arcs).');
+        }
+    } catch (err) {
+        alert('Ошибка при парсинге JSON: ' + err.message);
+    }
+}
