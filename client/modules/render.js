@@ -7,7 +7,7 @@
 
 import {selectObject} from '../editor.js';
 
-import {arcSourceId, currentMode, findNode, getAnalysisSession, getColorDimClass, getState, isTransitionEnabled, selectedId} from './state.js';
+import {arcSourceId, currentMode, findNode, getAnalysisSession, getColorDimClass, getState, inFlightTokens, isTransitionEnabled, registerAnimationCancel, selectedId} from './state.js';
 import {saveToLocalStorage} from './storage.js';
 
 const svg = document.getElementById('petri-svg');
@@ -184,11 +184,14 @@ export function render() {
         const isSelected = selectedId === p.uuid;
         const isArcSource = arcSourceId === p.uuid;
 
+        const visibleTokens = Math.max(0, p.tokens - (inFlightTokens[p.uuid] || 0));
+
         let tokensMarkup = '';
-        if (p.tokens === 1) {
+        if (visibleTokens === 1) {
             tokensMarkup = `<circle cx="${p.x}" cy="${p.y}" r="5" class="token"/>`;
-        } else if (p.tokens > 1) {
-            tokensMarkup = `<text x="${p.x}" y="${p.y + 4}" class="token label">${p.tokens}</text>`;
+        } else if (visibleTokens > 1) {
+            tokensMarkup =
+                `<text x="${p.x}" y="${p.y + 4}" class="token label">${visibleTokens}</text>`;
         }
 
         const dimClass = getColorDimClass(p.color);
@@ -480,4 +483,152 @@ export function renderAnalysisTaskControl() {
     const typeSelect = document.getElementById('analysis-type-select');
     if (serverInput) serverInput.disabled = false;
     if (typeSelect) typeSelect.disabled = false;
+}
+
+
+
+/// ЛЕТЯЩИЕ ФИШКИ ПРИ СРАБАТЫВАНИИ ПЕРЕХОДА
+
+/**
+ * @brief Вычисляет точку на квадратичной кривой Безье B(t) для t в.
+ */
+function getQuadraticBezierPoint(t, p0, p1, p2) {
+    const invT = 1 - t;
+    return {
+        x: invT * invT * p0.x + 2 * invT * t * p1.x + t * t * p2.x,
+        y: invT * invT * p0.y + 2 * invT * t * p1.y + t * t * p2.y
+    };
+}
+
+/**
+ * @brief Быстрая экспоненциальная функция плавности (easeOutExpo).
+ */
+function easeOutExpo(x) {
+    return x === 1 ? 1 : 1 - Math.pow(2, -10 * x);
+}
+
+/**
+ * @brief Запускает быструю плавную анимацию перетекания фишек через переход.
+ * @param {Object} transition - Объект сработавшего перехода.
+ * @param {Array} inArcs - Массив сработавших входящих дуг.
+ * @param {Array} outArcs - Массив сработавших исходящих дуг.
+ * @param {Function} onComplete - Коллбэк после завершения анимации (начисление выходных фишек).
+ */
+export function animateTransitionFiring(transition, inArcs, outArcs, onComplete) {
+    const viewport = document.getElementById('viewport') || svg;
+    if (!viewport) {
+        if (onComplete) onComplete();
+        return;
+    }
+
+    // Создаем временный слой поверх узлов, чтобы не ломать ререндер
+    const animLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    animLayer.setAttribute('pointer-events', 'none');
+    viewport.appendChild(animLayer);
+
+    let cancelled = false;
+    const unregister = registerAnimationCancel(() => {
+        cancelled = true;
+        animLayer.remove();
+    });
+
+    // Вспомогательная функция расчета опорной точки Q для дуги (аналогично render)
+    const buildTrack = (src, tgt, arcColor) => {
+        const hasReturn =
+            getState().arcs.some(a => a.sourceId === tgt.uuid && a.targetId === src.uuid);
+        const midX = (src.x + tgt.x) / 2;
+        const midY = (src.y + tgt.y) / 2;
+        const dx = tgt.x - src.x;
+        const dy = tgt.y - src.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const curveIntensity = hasReturn ? 35 : 12;
+
+        const q = {x: midX - (dy / len) * curveIntensity, y: midY + (dx / len) * curveIntensity};
+
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        // Сразу ставим фишку в начальную позицию (src), чтобы она не мигала в (0, 0)
+        circle.setAttribute('cx', src.x);
+        circle.setAttribute('cy', src.y);
+        circle.setAttribute('r', '5.5');
+        circle.setAttribute('fill', arcColor && arcColor !== 'black' ? arcColor : '#111');
+        circle.setAttribute('stroke', '#fff');
+        circle.setAttribute('stroke-width', '1.5');
+        animLayer.appendChild(circle);
+
+
+        return {p0: {x: src.x, y: src.y}, p1: q, p2: {x: tgt.x, y: tgt.y}, el: circle};
+    };
+
+    // Готовим треки для входных дуг (Позиция -> Переход)
+    const inTracks = inArcs
+                         .map(arc => {
+                             const src = findNode(arc.sourceId);
+                             return src ? buildTrack(src, transition, arc.color) : null;
+                         })
+                         .filter(Boolean);
+
+    // Готовим треки для выходных дуг (Переход -> Позиция), изначально скрыты
+    const outTracks = outArcs
+                          .map(arc => {
+                              const tgt = findNode(arc.targetId);
+                              if (!tgt) return null;
+                              const track = buildTrack(transition, tgt, arc.color);
+                              track.el.style.display = 'none';
+                              return track;
+                          })
+                          .filter(Boolean);
+
+    const phaseDuration = 160;
+    let phase = inTracks.length > 0 ? 1 : 2;
+    let startTime = null;  // Зафиксируем строго по первому кадру requestAnimationFrame
+
+    if (phase === 2) {
+        outTracks.forEach(t => (t.el.style.display = ''));
+    }
+
+    function step(now) {
+        if (cancelled) return;
+        if (startTime === null) startTime = now;
+        const elapsed = Math.max(0, now - startTime);
+        const rawProgress = Math.min(1, elapsed / phaseDuration);
+        const eased = easeOutExpo(rawProgress);
+
+        if (phase === 1) {
+            inTracks.forEach(t => {
+                const pos = getQuadraticBezierPoint(eased, t.p0, t.p1, t.p2);
+                t.el.setAttribute('cx', pos.x);
+                t.el.setAttribute('cy', pos.y);
+            });
+
+            if (rawProgress >= 1) {
+                inTracks.forEach(t => t.el.remove());
+                if (outTracks.length > 0) {
+                    phase = 2;
+                    startTime =
+                        now;  // Используем текущий timestamp кадра instead of performance.now()
+                    outTracks.forEach(t => (t.el.style.display = ''));
+                } else {
+                    animLayer.remove();
+                    if (onComplete) onComplete();
+                    return;
+                }
+            }
+        } else if (phase === 2) {
+            outTracks.forEach(t => {
+                const pos = getQuadraticBezierPoint(eased, t.p0, t.p1, t.p2);
+                t.el.setAttribute('cx', pos.x);
+                t.el.setAttribute('cy', pos.y);
+            });
+
+            if (rawProgress >= 1) {
+                animLayer.remove();
+                if (onComplete) onComplete();
+                return;
+            }
+        }
+
+        requestAnimationFrame(step);
+    }
+
+    requestAnimationFrame(step);
 }

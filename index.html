@@ -74,16 +74,19 @@
             onclick="window.open('https://github.com/Yerk08/petri-net-editor/blob/main/docs/user-guide.md', '_blank');"
             style="background: #fcf8f2; border-color: #f1e4d3;">📖 Справка</button>
 
-        <div class="section-title">AI функции</div>
-        <div style="display: flex; gap: 4px; width: 100%;">
-            <button onclick="copyJSONToClipboard()" title="Скопировать сеть (чтобы потом открыть в Google AI)"
-                style="flex: 1; min-width: 0; padding: 6px 2px; white-space: nowrap; overflow: hidden; background: #fffff5; border-color: #f7ffcc;">
-                ✨ Copy
-            </button>
-            <button onclick="pasteJSONFromClipboard()" title="Вставить JSON сети из буфера обмена"
-                style="flex: 1; min-width: 0; padding: 6px 2px; white-space: nowrap; overflow: hidden; background: #fffff5; border-color: #f7ffcc;">
-                📋 Paste
-            </button>
+        <div style="margin-top: auto; padding-top: 10px; opacity: 0.35; transition: opacity 0.2s;"
+            onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.35'">
+            <div style="font-size: 11px; color: #888; margin-bottom: 4px; text-align: center;">AI JSON</div>
+            <div style="display: flex; gap: 4px; width: 100%;">
+                <button onclick="copyJSONToClipboard()" title="Скопировать JSON сети"
+                    style="flex: 1; min-width: 0; padding: 4px 2px; white-space: nowrap; background: transparent; border: 1px solid rgba(128,128,128,0.3); color: inherit;">
+                    ✨ Copy
+                </button>
+                <button onclick="pasteJSONFromClipboard()" title="Вставить JSON сети"
+                    style="flex: 1; min-width: 0; padding: 4px 2px; white-space: nowrap; background: transparent; border: 1px solid rgba(128,128,128,0.3); color: inherit;">
+                    📋 Paste
+                </button>
+            </div>
         </div>
     </div>
 

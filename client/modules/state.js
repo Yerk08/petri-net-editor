@@ -76,7 +76,7 @@ export let visibleColors = {
     green: true
 };
 
-import {render, updatePropertyWhileSimulation} from './render.js';
+import {render, updatePropertyWhileSimulation, animateTransitionFiring} from './render.js';
 import {viewInDispatcher, closeDispatcher, closeDetailedResult} from './dispatcher.js';
 import {selectObject} from '../editor.js';
 
@@ -120,6 +120,20 @@ export function getDispatcherView() {
 }
 export function setDispatcherTasks(tasks) {
     dispatcherView.tasks = tasks;
+}
+
+export let inFlightTokens = {};  // { placeUuid: количество_летящих_сейчас_фишек }
+let activeAnimations = [];       // Список функций принудительной остановки анимаций
+export function registerAnimationCancel(cancelFn) {
+    activeAnimations.push(cancelFn);
+    return () => {
+        activeAnimations = activeAnimations.filter(fn => fn !== cancelFn);
+    };
+}
+export function clearAllAnimations() {
+    activeAnimations.forEach(fn => fn());
+    activeAnimations = [];
+    inFlightTokens = {};
 }
 
 /**
@@ -257,6 +271,7 @@ export function restoreTokensFromSnapshot(snapshot) {
  * @brief Сбрасывает симуляцию к начальной разметке фишек и очищает историю.
  */
 export function resetSimulation() {
+    clearAllAnimations();
     state.places.forEach(p => {
         if (p.initialTokens !== undefined) p.tokens = p.initialTokens;
     });
@@ -321,7 +336,7 @@ export function isTransitionEnabled(transId) {
     if (!transition || getColorDimClass(transition.color) === 'color-dimmed') {
         return false;
     }
-    
+
     // Выбираем только те входящие дуги, у которых источник (позиция) является видимым
     const inArcs = state.arcs.filter(a => {
         if (a.targetId !== transId) return false;
@@ -369,12 +384,16 @@ export function fireTransition(transId) {
     const inArcs = state.arcs.filter(a => a.targetId === transId);
     const outArcs = state.arcs.filter(a => a.sourceId === transId);
 
+    const activeInArcs = [];
+    const activeOutArcs = [];
+
     inArcs.forEach(arc => {
         if (getColorDimClass(arc.color) !== 'color-dimmed') {
             const srcPlace = state.places.find(p => p.uuid === arc.sourceId);
             // Токены списываются, только если позиция существует и она видима
             if (srcPlace && getColorDimClass(srcPlace.color) !== 'color-dimmed') {
                 srcPlace.tokens -= arc.weight;
+                activeInArcs.push(arc);
             }
         }
     });
@@ -384,12 +403,26 @@ export function fireTransition(transId) {
             const tgtPlace = state.places.find(p => p.uuid === arc.targetId);
             if (tgtPlace && getColorDimClass(tgtPlace.color) !== 'color-dimmed') {
                 tgtPlace.tokens += arc.weight;
+                // Помечаем, что эти фишки визуально ещё в пути
+                inFlightTokens[tgtPlace.uuid] = (inFlightTokens[tgtPlace.uuid] || 0) + arc.weight;
+                activeOutArcs.push(arc);
             }
         }
     });
 
     render();
     updatePropertyWhileSimulation();
+
+    animateTransitionFiring(transition, activeInArcs, activeOutArcs, () => {
+        // Фишки долетели — убираем их из "визуально скрытых"
+        activeOutArcs.forEach(arc => {
+            if (inFlightTokens[arc.targetId]) {
+                inFlightTokens[arc.targetId] =
+                    Math.max(0, inFlightTokens[arc.targetId] - arc.weight);
+            }
+        });
+        render();
+    });
 }
 
 
@@ -553,6 +586,7 @@ export function getCleanState() {
 // --- ОПЕРАЦИЯ ОТКАТА И ВОЗВРАТА ОТКАТА (UNDO / REDO) ---
 export function undoTransition() {
     if (simulation.history.length === 0) return;
+    clearAllAnimations();
 
     const snapshotCurrent = createTokensSnapshot();
     const lastAction = simulation.history.pop();
@@ -571,6 +605,7 @@ export function undoTransition() {
 export function redoTransition() {
     const nextAction = simulation.redoHistory.pop();
     if (!nextAction) return;
+    clearAllAnimations();
 
     simulation.history.push({
         uuid: nextAction.uuid,
