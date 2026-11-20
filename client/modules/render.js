@@ -578,7 +578,7 @@ export function animateTransitionFiring(transition, inArcs, outArcs, onComplete)
                           })
                           .filter(Boolean);
 
-    const phaseDuration = 160;
+    const phaseDuration = 240;
     let phase = inTracks.length > 0 ? 1 : 2;
     let startTime = null;  // Зафиксируем строго по первому кадру requestAnimationFrame
 
