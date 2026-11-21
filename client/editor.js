@@ -6,7 +6,7 @@
  */
 
 import {clearAnalysisMarkingToEmpty, loadAnalysisTypes, onServerUrlInput, resetAnalysisMarkingToInitial, submitAnalysisTask, toggleAnalysisColorCapture, toggleAnalysisMarkingCapture, updateAnalysisParamGroup, updateAnalysisParamValue, updateAnalysisType, updateConnectionIndicator} from './modules/analysis.js';
-import {cancelAnalysisTask, cancelAnalysisTaskById, clearAllDispatcherTasks, closeDetailedResult, closeDispatcher, openDetailedResult} from './modules/dispatcher.js';
+import {cancelAnalysisTask, cancelAnalysisTaskById, clearAllDispatcherTasks, closeDetailedResult, closeDispatcher, openDetailedResult, refreshClusterStatus} from './modules/dispatcher.js';
 import {onCanvasMouseDown, onCanvasMouseMove, onNodeMouseDown, onNodeMouseMove, onNodeMouseUp} from './modules/events.js';
 import {initHotKeys} from './modules/hotkeys.js';
 import {render, renderAnalysisTaskControl} from './modules/render.js';
@@ -244,6 +244,7 @@ window.closeDispatcher = closeDispatcher
 window.openDetailedResult = openDetailedResult;
 window.closeDetailedResult = closeDetailedResult;
 window.clearAllDispatcherTasks = clearAllDispatcherTasks;
+window.refreshClusterStatus = refreshClusterStatus;
 
 window.exportToFile = exportToFile;
 window.importFromFile = importFromFile;

@@ -1,5 +1,6 @@
 import time
 import uuid
+import random
 from flask import Flask, jsonify, request, render_template_string
 from flask_cors import CORS
 
@@ -30,20 +31,44 @@ ANALYSIS_SCHEMAS = {
         {"id": "marking_filter_1", "name": "Фильтр разметки 1", "type": "marking_filter"},
         {"id": "marking_filter_2", "name": "Фильтр разметки 2", "type": "marking_filter"}
     ],
-    # Сценарий 2: ничего нет (пустая схема)
+    # Сценарий 2: пустая схема
     "some_2": []
 }
 
-@app.route('/mock/api/v1/get_types', methods=['GET'])
+
+@app.route('/api/v1/cluster_status', methods=['GET'])
+def cluster_status():
+    """Возвращает симулируемое состояние вычислительного кластера для Диспетчера."""
+    active_tasks = sum(1 for t in TASKS_DB.values() if t["status"] == "active")
+    online_workers = random.randint(3, 6)
+    total_cores = online_workers * 8
+    total_ram_mb = online_workers * 16384
+    total_benchmark = online_workers * 1450
+    queued_chunks = active_tasks * random.randint(12, 35)
+
+    return jsonify({
+        "isAvailable": online_workers > 0,
+        "onlineWorkers": online_workers,
+        "totalCpuCores": total_cores,
+        "totalRamMb": total_ram_mb,
+        "totalBenchmarkScore": total_benchmark,
+        "activeTasksCount": active_tasks,
+        "queuedChunksCount": queued_chunks
+    })
+
+
+@app.route('/api/v1/get_types', methods=['GET'])
 def get_types():
     return jsonify(ANALYSIS_TYPES)
 
-@app.route('/mock/api/v1/get_schema', methods=['GET'])
+
+@app.route('/api/v1/get_schema', methods=['GET'])
 def get_schema():
     analysis_id = request.args.get('id')
     return jsonify(ANALYSIS_SCHEMAS.get(analysis_id, []))
 
-@app.route('/mock/api/v1/submit_task', methods=['POST'])
+
+@app.route('/api/v1/submit_task', methods=['POST'])
 def submit_task():
     data = request.get_json() or {}
     analysis_type = data.get("analysis_type")
@@ -53,9 +78,12 @@ def submit_task():
         return jsonify({"error": "Missing analysis_type"}), 400
 
     task_id = str(uuid.uuid4())[:8]
-    
-    # Текст короткого результата для Сценария 1
-    short_res = "Анализ успешно завершен (Да). Все параметры верифицированы." if analysis_type == "some_1" else "Ошибка инициализации."
+
+    short_res = (
+        "Анализ успешно завершен (Да). Все параметры верифицированы."
+        if analysis_type == "some_1"
+        else "Ошибка инициализации."
+    )
 
     TASKS_DB[task_id] = {
         "status": "active",
@@ -66,7 +94,8 @@ def submit_task():
     }
     return jsonify({"taskId": task_id})
 
-@app.route('/mock/api/v1/check_task', methods=['GET'])
+
+@app.route('/api/v1/check_task', methods=['GET'])
 def check_task():
     task_id = request.args.get('taskId')
     task = TASKS_DB.get(task_id)
@@ -74,10 +103,9 @@ def check_task():
     if not task:
         return jsonify({"status": "failed", "error": "Задача не найдена"}), 404
 
-    # Имитация работы алгоритма
+    # Имитация работы распределенного кластера (5 секунд)
     elapsed_time = time.time() - task["created_at"]
-    if task["status"] == "active" and elapsed_time > 3.0:
-        # Сценарий 1 всегда готов, Сценарий 2 всегда падает с ошибкой
+    if task["status"] == "active" and elapsed_time > 5.0:
         if task["type"] == "some_1":
             task["status"] = "ready"
         else:
@@ -92,7 +120,8 @@ def check_task():
 
     return jsonify(response)
 
-@app.route('/mock/api/v1/cancel_task', methods=['POST'])
+
+@app.route('/api/v1/cancel_task', methods=['POST'])
 def cancel_task():
     data = request.get_json() or {}
     task_id = data.get("taskId")
@@ -103,7 +132,8 @@ def cancel_task():
         return jsonify({"status": "success", "message": "Task cancelled"})
     return jsonify({"error": "Task not found"}), 404
 
-@app.route('/mock/api/v1/get_full_result', methods=['GET'])
+
+@app.route('/api/v1/get_full_result', methods=['GET'])
 def get_full_result():
     task_id = request.args.get('taskId')
     task = TASKS_DB.get(task_id)
@@ -114,7 +144,6 @@ def get_full_result():
     if task["status"] == "failed":
         return f"<h3>Критическая ошибка расчетов: {task.get('error')}</h3>", 500
 
-    # Минималистичный и аккуратный HTML-шаблон для вывода параметров (Сценарий 1)
     html_template = """
     <!DOCTYPE html>
     <html lang="ru">
@@ -132,7 +161,7 @@ def get_full_result():
     </head>
     <body>
         <h2>📄 Отчет по анализу параметров задачи</h2>
-        <div class="meta">ID Задачи: <code>{{ task_id }}</code> | Статус: <b>{{ task['status'] }}</b></div>
+        <div class="meta">Статус: <b>{{ task['status'] }}</b></div>
         
         <p><b>Результат:</b> {{ task['short_result'] }}</p>
         
@@ -156,8 +185,9 @@ def get_full_result():
     </body>
     </html>
     """
-    return render_template_string(html_template, task_id=task_id, task=task)
+    return render_template_string(html_template, task=task)
+
 
 if __name__ == '__main__':
-    print("Mock-сервер запущен на http://127.0.0.1:5000")
+    print("Mock Client-сервер запущен на http://127.0.0.1:5000")
     app.run(host='0.0.0.0', port=5000, debug=True)

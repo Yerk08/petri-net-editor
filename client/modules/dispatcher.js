@@ -96,7 +96,7 @@ export async function cancelAnalysisTaskById(targetTaskId) {
     const task = dView.tasks.find(t => t.taskId === targetTaskId);
     if (!task) return;
 
-    if (!confirm(`Вы уверены, что хотите отменить задачу ${targetTaskId}?`)) return;
+    if (!confirm(`Вы уверены, что хотите отменить задачу \"${task.typeName}\"?`)) return;
 
     // Останавливаем поллинг для отменяемой задачи
     if (pollingTimeoutsMap.has(targetTaskId)) {
@@ -163,6 +163,7 @@ export function viewInDispatcher() {
     dView.isDispatcherMode = true;
 
     initActiveTasksPolling();
+    startClusterStatusPolling();
 
     let overlay = document.getElementById('dispatcher-overlay');
     if (!overlay) {
@@ -172,24 +173,39 @@ export function viewInDispatcher() {
         if (container) container.appendChild(overlay);
     }
 
+    const statusLabels = {
+        active: '⏳ Выполняется',
+        ready: '✅ Готово',
+        failed: '❌ Ошибка',
+        cancelled: '🚫 Отменено'
+    };
+
+    const statusColors = {
+        active: '#fff3cd',
+        ready: '#d4edda',
+        failed: '#f8d7da',
+        cancelled: '#e2e3e5'
+    };
+
     let tasksHtml =
         dView.tasks
             .map(t => {
-                const statusColors =
-                    {active: '#fff3cd', ready: '#d4edda', failed: '#f8d7da', cancelled: '#e2e3e5'};
                 const currentBg = statusColors[t.taskStatus] || '#ffffff';
+                const statusText = statusLabels[t.taskStatus] || t.taskStatus;
 
                 return `
             <div class="dispatcher-task-card" style="background: ${currentBg};">
-                <div class="dispatcher-task-info" onclick="window.openDetailedResult('${
+                <div class="dispatcher-task-info" style="min-width: 0; flex: 1;" onclick="window.openDetailedResult('${
                     t.taskId}', '${t.serverUrl}')">
-                    <div class="dispatcher-task-title">${
-                    t.typeName} <span class="dispatcher-task-time">[${t.timestamp}]</span></div>
-                    <div class="dispatcher-task-meta">ID: <code>${t.taskId}</code> | Статус: <b>${
-                    t.taskStatus}</b></div>
+                    <div class="dispatcher-task-meta" style="margin-bottom: 4px; font-size: 0.9em;">
+                        <b>${statusText}</b> <span class="dispatcher-task-time" style="color: #555;">[${t.timestamp}]</span>
+                    </div>
+                    <div class="dispatcher-task-title" style="font-weight: 600; line-height: 1.3; word-break: break-word; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
+                        ${t.typeName}
+                    </div>
                     ${
                     t.shortResult ?
-                        `<div class="dispatcher-task-result"><h3>${t.shortResult}</h3></div>` :
+                        `<div class="dispatcher-task-result" style="margin-top: 6px;"><h3 style="margin: 0; font-size: 0.95em; font-weight: normal;">${t.shortResult}</h3></div>` :
                         ''}
                 </div>
                 <div class="dispatcher-task-actions">
@@ -334,6 +350,8 @@ export function trackTaskByIdManual() {
  * координатора режимов `setMode()` (`state.js`).
  */
 export function closeDispatcher() {
+    stopClusterStatusPolling();
+
     const overlay = document.getElementById('dispatcher-overlay');
     if (overlay) overlay.remove();
     getDispatcherView().isDispatcherMode = false;
@@ -385,4 +403,88 @@ export function closeDetailedResult() {
         document.getElementById('dispatcher-detailed-window').remove();
         dView.isDetailedResultMode = false;
     }
+}
+
+
+// ** ОБНОВЛЕНИЕ СОСТОЯНИЕ КЛАСТЕРА **
+let clusterStatusInterval = null;
+function stopClusterStatusPolling() {
+    if (clusterStatusInterval) {
+        clearInterval(clusterStatusInterval);
+        clusterStatusInterval = null;
+    }
+}
+
+/**
+ * @brief Запрашивает состояние вычислительного кластера с текущего сервера и обновляет виджет в правой панели.
+ * @async
+ * @note **Зависимости:** Читает адрес сервера из `getAnalysisSession().defaultServer` и проверяет 
+ * режим диспетчера через `getDispatcherView()` (`state.js`). Обращается к эндпоинту 
+ * `/api/v1/cluster_status`, монтирует сводку в DOM-элемент `#properties-panel` или останавливает 
+ * фоновый опрос через `stopClusterStatusPolling()` при закрытии Диспетчера.
+ */
+export async function refreshClusterStatus() {
+    const panel = document.getElementById('properties-panel');
+    if (!panel || !getDispatcherView().isDispatcherMode) {
+        stopClusterStatusPolling();
+        return;
+    }
+
+    const rawUrl = getAnalysisSession().defaultServer || '';
+    const serverUrl = rawUrl.trim().replace(/\/+$/, '');
+
+    if (!serverUrl) {
+        panel.innerHTML = `
+            <div class="property-group"><h3>Кластер</h3></div>
+            <p style="color:#888;">Сервер не задан.</p>
+        `;
+        return;
+    }
+
+    try {
+        const res = await fetch(`${serverUrl}/api/v1/cluster_status`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        const ramGb = (data.totalRamMb / 1024).toFixed(1);
+        const availabilityBadge = data.isAvailable
+            ? `<span style="color:#155724; font-weight:bold;">🟢 Готов</span>`
+            : `<span style="color:#856404; font-weight:bold;">🟡 Нет узлов</span>`;
+
+        panel.innerHTML = `
+            <div class="property-group">
+                <h3>Кластер</h3>
+            </div>
+            <div style="color:#666; word-break:break-all; margin-bottom:8px;">
+                <code>${serverUrl}</code>
+            </div>
+            <div style="padding: 10px; border: 1px solid rgba(128,128,128,0.3); border-radius: 6px; background: rgba(128,128,128,0.06); line-height:1.6;">
+                <div style="margin-bottom:6px;">${availabilityBadge}</div>
+                <div>🖥️ Узлы: <b>${data.onlineWorkers}</b></div>
+                <div>⚙️ Cores: <b>${data.totalCpuCores}</b></div>
+                <div>⚙️ RAM: <b>${ramGb} ГБ</b></div>
+                <div>⚡ Power: <b>${data.totalBenchmarkScore}</b></div>
+                <div>📦 Задачи: <b>${data.activeTasksCount}</b></div>
+                <div>🧩 Очередь: <b>${data.queuedChunksCount}</b></div>
+            </div>
+        `;
+    } catch (e) {
+        panel.innerHTML = `
+            <div class="property-group">
+                <h3>Кластер</h3>
+            </div>
+            <div style="color:#666; word-break:break-all; margin-bottom:8px;">
+                <code>${serverUrl}</code>
+            </div>
+            <div style="padding: 10px; border: 1px solid rgba(220,53,69,0.4); border-radius: 6px; background: rgba(220,53,69,0.08); color:#721c24; font-weight:bold;">
+                🔴 Недоступен
+            </div>
+        `;
+    }
+}
+
+function startClusterStatusPolling() {
+    stopClusterStatusPolling();
+    refreshClusterStatus();
+    clusterStatusInterval = setInterval(refreshClusterStatus, 2000);
 }
