@@ -1,48 +1,55 @@
 openapi: 3.0.3
 info:
-  title: Mock Petri Net Analysis API
-  description: Минимальный mock-сервер для симуляции анализа сетей Петри с поддержкой двух сценариев.
-  version: 1.0.0
+  title: Distributed Petri Net Analysis Cluster API
+  description: >
+    Спецификация API сервера-планировщика (Master) для распределенного анализа сетей Петри. Включает клиентский контракт для веб-редактора и протокол управления вычислительными узлами (Workers).
+  version: 2.0.0
 servers:
-  - url: http://127.0.0.1:5000/mock/api
-    description: Локальный mock-сервер
+  - url: http://127.0.0.1:5000
+    description: Локальный сервер разработки
 
 paths:
-  /get_types:
+  /api/v1/get_types:
     get:
-      summary: Получить список доступных типов анализа
-      description: Возвращает массив с доступными сценариями анализа (успешный и ошибочный).
+      summary: Получить список доступных алгоритмов анализа
       responses:
-        '200':
-          description: Успешный ответ со списком типов
+        "200":
+          description: Успешный ответ со списком алгоритмов
           content:
             application/json:
               schema:
                 type: array
                 items:
                   type: object
+                  required:
+                    - id
+                    - name
                   properties:
                     id:
                       type: string
-                      example: "some_1"
+                      example: reachability_graph
                     name:
                       type: string
-                      example: "Успешный анализ (Сценарий 1)"
+                      example: Построение графа достижимости и поиск тупиков
+      tags:
+        - Client API
 
-  /get_schema:
+  /api/v1/get_schema:
     get:
+      tags:
+        - Client API
       summary: Получить схему параметров для формы
       description: Возвращает набор полей ввода в зависимости от выбранного ID анализа.
       parameters:
         - name: id
           in: query
           required: true
-          description: Идентификатор анализа (some_1 или some_2)
+          description: Идентификатор анализа
           schema:
             type: string
-            example: "some_1"
+            example: some_1
       responses:
-        '200':
+        "200":
           description: Успешный возврат схемы компонентов формы
           content:
             application/json:
@@ -50,26 +57,54 @@ paths:
                 type: array
                 items:
                   type: object
+                  required:
+                    - id
+                    - name
+                    - type
                   properties:
                     id:
                       type: string
-                      example: "param_num"
+                      example: param_list
                     name:
                       type: string
-                      example: "Числовой параметр (number)"
+                      example: Список чекбоксов (list)
                     type:
                       type: string
-                      example: "number"
+                      enum:
+                        - number
+                        - string
+                        - description
+                        - dict
+                        - list
+                        - color_filter
+                        - marking_filter
+                      example: list
                     options:
-                      type: object
-                      description: Дополнительные опции для типов dict или list
-                      additionalProperties:
-                        type: string
+                      description: >
+                        Для type='dict' — объект вида {"opt1": "Вариант А"}.
+                        Для type='list' — массив объектов вида [{"name": "Элемент 1", "value": "val1"}].
+                      oneOf:
+                        - type: object
+                          additionalProperties:
+                            type: string
+                        - type: array
+                          items:
+                            type: object
+                            required:
+                              - name
+                              - value
+                            properties:
+                              name:
+                                type: string
+                              value:
+                                type: string
 
-  /submit_task:
+  /api/v1/submit_task:
     post:
+      tags:
+        - Client API
       summary: Отправить задачу на выполнение
-      description: Инициализирует задачу анализа и возвращает её taskId.
+      description: Инициализирует задачу анализа, сохраняет переданные параметры формы и возвращает taskId.
       requestBody:
         required: true
         content:
@@ -81,31 +116,67 @@ paths:
               properties:
                 analysis_type:
                   type: string
-                  example: "some_1"
+                  example: some_1
                 params:
                   type: object
-                  description: Произвольный объект с параметрами из схемы
+                  description: Словарь значений полей из /api/v1/get_schema (включая описание переходов и разметок через color_filter и marking_filter)
+                  additionalProperties: true
                   example:
-                    param_num: 42
-                    param_str: "тестовая строка"
+                    param_num: 123
+                    param_str: ajwido
+                    param_dict: opt2
+                    param_list:
+                      - val1
+                      - val2
+                    color_filter_1:
+                      - name: T1
+                        inputs:
+                          P1: 1
+                        outputs:
+                          P1: 1
+                          P2: 1
+                    color_filter_2:
+                      - name: T1
+                        inputs:
+                          P1: 1
+                        outputs:
+                          P1: 1
+                          P2: 1
+                    marking_filter_1:
+                      P1: 1
+                      P2: 0
+                    marking_filter_2:
+                      P1: 7
+                      P2: 3
       responses:
-        '200':
+        "200":
           description: Задача успешно создана
           content:
             application/json:
               schema:
                 type: object
+                required:
+                  - taskId
                 properties:
                   taskId:
                     type: string
-                    example: "a1b2c3d4"
-        '400':
+                    example: a1b2c3d4
+        "400":
           description: Не передан обязательный параметр analysis_type
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Missing analysis_type
 
-  /check_task:
+  /api/v1/check_task:
     get:
+      tags:
+        - Client API
       summary: Проверить статус выполнения (Polling)
-      description: Возвращает текущий статус задачи. Через 3 секунды после создания переводит some_1 в статус ready, а some_2 в статус failed.
       parameters:
         - name: taskId
           in: query
@@ -113,9 +184,9 @@ paths:
           description: Идентификатор проверяемой задачи
           schema:
             type: string
-            example: "a1b2c3d4"
+            example: a1b2c3d4
       responses:
-        '200':
+        "200":
           description: Статус задачи успешно получен
           content:
             application/json:
@@ -127,36 +198,17 @@ paths:
                   status:
                     type: string
                     enum: [active, ready, failed, cancelled]
-                    example: "ready"
+                    example: ready
                   short_result:
                     type: string
                     description: Присутствует, если статус 'ready'
-                    example: "Анализ успешно завершен (Да)."
+                    example: Анализ успешно завершен (Да). Все параметры верифицированы.
                   error:
                     type: string
                     description: Присутствует, если статус 'failed'
-                    example: "Критический сбой: Анализ не может быть выполнен"
-        '404':
+                    example: Критический сбой. Анализ не может быть выполнен (Превышено время ожидания / Тупик)
+        "404":
           description: Задача с таким ID не найдена
-
-  /cancel_task:
-    post:
-      summary: Отменить выполнение задачи
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - taskId
-              properties:
-                taskId:
-                  type: string
-                  example: "a1b2c3d4"
-      responses:
-        '200':
-          description: Задача успешно отменена
           content:
             application/json:
               schema:
@@ -164,34 +216,457 @@ paths:
                 properties:
                   status:
                     type: string
-                    example: "success"
+                    example: failed
+                  error:
+                    type: string
+                    example: Задача не найдена
+  
+  /api/v1/cancel_task:
+    post:
+      summary: Отменить выполнение задачи и очистить очередь подзадач
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                taskId:
+                  type: string
+                  example: tsk_998877
+              required:
+                - taskId
+      responses:
+        "200":
+          description: Задача отменена, активным воркерам будет отправлена команда abort_chunk
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
                   message:
                     type: string
-                    example: "Task cancelled"
-        '404':
+                    example: Task cancelled
+        "404":
           description: Задача не найдена
+      tags:
+        - Client API
 
-  /get_full_result:
+  /api/v1/get_full_result:
     get:
-      summary: Получить полноценный HTML-отчет
-      description: Возвращает сгенерированную веб-страницу с детальным описанием переданных параметров.
+      summary: Получить итоговый HTML-отчет (результат работы merger)
       parameters:
         - name: taskId
           in: query
-          required: true
           description: Идентификатор выполненной задачи
+          required: true
           schema:
             type: string
-            example: "a1b2c3d4"
+            example: tsk_998877
       responses:
-        '200':
-          description: HTML страница отчета
+        "200":
+          description: Сформированный HTML-отчет
           content:
             text/html:
               schema:
                 type: string
-                example: "<!DOCTYPE html><html><body>...</body></html>"
-        '404':
+                example: <!DOCTYPE html><html><body><h1>Отчет по анализу сети Петри</h1>...</body></html>
+        "404":
           description: Задача не найдена
-        '500':
-          description: Страница ошибки для упавших задач (Сценарий 2)
+        "409":
+          description: Расчет задачи еще не завершен
+        "500":
+          description: Страница с информацией о критическом сбое при расчете
+      tags:
+        - Client API
+
+  /api/v1/cluster_status:
+    get:
+      tags:
+        - Client API
+      summary: Получить текущее состояние и мощности вычислительного кластера
+      description: >
+        Возвращает агрегированную статистику по активным воркерам, суммарным ресурсам 
+        (ядра CPU, оперативная память, суммарный benchmark_score) и текущей загрузке очереди подзадач.
+      responses:
+        "200":
+          description: Актуальная сводка о состоянии кластера
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - isAvailable
+                  - onlineWorkers
+                  - totalCpuCores
+                  - totalRamMb
+                  - totalBenchmarkScore
+                  - activeTasksCount
+                  - queuedChunksCount
+                properties:
+                  isAvailable:
+                    type: boolean
+                    description: Есть ли в кластере хотя бы один живой воркер, готовый принять задачи
+                    example: true
+                  onlineWorkers:
+                    type: integer
+                    description: Количество активных вычислительных узлов онлайн
+                    example: 12
+                  totalCpuCores:
+                    type: integer
+                    description: Суммарное количество ядер CPU всех подключенных воркеров
+                    example: 64
+                  totalRamMb:
+                    type: integer
+                    description: Суммарный объем оперативной памяти воркеров в мегабайтах
+                    example: 131072
+                  totalBenchmarkScore:
+                    type: integer
+                    description: Интегральный показатель вычислительной мощности кластера
+                    example: 18400
+                  activeTasksCount:
+                    type: integer
+                    description: Количество клиентских задач, которые считаются прямо сейчас
+                    example: 2
+                  queuedChunksCount:
+                    type: integer
+                    description: Количество подзадач (квантов) в очереди на распределение
+                    example: 48
+
+
+
+  /worker/register:
+    post:
+      summary: Регистрация вычислительного узла в кластере
+      description: Воркер передает характеристики среды (WASM/Браузер или Docker/Numba) и получает идентификатор воркера и тайминги опроса.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                arch:
+                  type: string
+                  example: x86_64
+                os:
+                  type: string
+                  example: linux
+                cpu_cores:
+                  type: integer
+                  example: 8
+                ram_mb:
+                  type: integer
+                  example: 16384
+                benchmark_score:
+                  type: integer
+                  example: 1450
+              required:
+                - arch
+                - os
+                - cpu_cores
+                - ram_mb
+                - benchmark_score
+      responses:
+        "200":
+          description: Узел успешно зарегистрирован
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  workerId:
+                    type: string
+                    example: wrk_9a8b7c6d
+                  heartbeatIntervalMs:
+                    description: Интервал отправки heartbeat в миллисекундах
+                    type: integer
+                    example: 3000
+                  leaseTimeoutMs:
+                    description: Таймаут жизни сессии (TTL) при отсутствии heartbeat
+                    type: integer
+                    example: 10000
+                required:
+                  - workerId
+                  - heartbeatIntervalMs
+                  - leaseTimeoutMs
+      tags:
+        - Worker API
+
+  /worker/pull:
+    post:
+      tags:
+        - Worker API
+      summary: Запрос пачки квантов подзадач в виде готовых Python-скриптов
+      description: >
+        Воркер запрашивает до `freeSlots` независимых подзадач. Сервер возвращает список 
+        готовых к запуску .py скриптов со вшитыми данными подзадач. Если очереди пусты, 
+        возвращается пустой массив `chunks` и время ожидания `retryAfterMs`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - workerId
+                - freeSlots
+                - availableRamMb
+              properties:
+                workerId:
+                  type: string
+                  example: wrk_9a8b7c6d
+                freeSlots:
+                  type: integer
+                  minimum: 1
+                  description: Количество свободных потоков/воркеров, готовых принять задачи прямо сейчас
+                  example: 4
+                availableRamMb:
+                  type: integer
+                  example: 4096
+      responses:
+        "200":
+          description: Список выданных квантов работы (может быть пустым, если задач нет)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PullResponse"
+        "404":
+          description: Воркер не найден в реестре (нужно пройти /worker/register)
+
+  /worker/heartbeat:
+    post:
+      tags:
+        - Worker API
+      summary: Подтверждение активности (пульс) и получение команд управления по активным чанкам
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - workerId
+                - activeChunkIds
+                - cpuLoadPercent
+              properties:
+                workerId:
+                  type: string
+                  example: wrk_9a8b7c6d
+                activeChunkIds:
+                  type: array
+                  description: Список ID подзадач, которые прямо сейчас считаются на этом узле (пустой массив, если простаивает)
+                  items:
+                    type: string
+                  example: ["chk_112233", "chk_112234"]
+                cpuLoadPercent:
+                  type: number
+                  format: float
+                  example: 87.5
+      responses:
+        "200":
+          description: Продление аренды (TTL) и управляющие команды от сервера
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - nextDeadlineMs
+                  - workerCommand
+                  - abortChunkIds
+                properties:
+                  nextDeadlineMs:
+                    type: integer
+                    example: 10000
+                  workerCommand:
+                    type: string
+                    enum: [continue, ban]
+                    description: >
+                      continue — узел работает в штатном режиме;
+                      ban — узел заблокирован за систематическое нарушение BFT-проверок.
+                    example: continue
+                  abortChunkIds:
+                    type: array
+                    description: Список ID чанков, расчет которых нужно немедленно прервать (задача отменена пользователем или кворум уже собран)
+                    items:
+                      type: string
+                    example: ["chk_112234"]
+        "404":
+          description: Воркер не найден в реестре (нужно пройти /worker/register)
+
+  /worker/unregister:
+    post:
+      tags:
+        - Worker API
+      summary: Штатное отключение воркера от кластера
+      description: >
+        Вызывается при штатной остановке контейнера или закрытии вкладки браузера. 
+        Позволяет серверу мгновенно вернуть незавершенные чанки этого воркера в очередь, 
+        не дожидаясь истечения leaseTimeoutMs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - workerId
+              properties:
+                workerId:
+                  type: string
+                  example: wrk_9a8b7c6d
+      responses:
+        "200":
+          description: Воркер успешно удален из активного пула, его задачи возвращены в очередь
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: unregistered
+        "404":
+          description: Воркер с таким ID уже не числится активным
+
+  /worker/submit:
+    post:
+      summary: Отправка результата расчета или отчета о сбое песочницы
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/SubmitSuccess"
+                - $ref: "#/components/schemas/SubmitError"
+      responses:
+        "200":
+          description: Результат или отчет об ошибке принят сервером для BFT-сверки / переназначения
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: accepted
+        "400":
+          description: Некорректный формат данных или несоответствие chunkId
+        "404":
+          description: Воркер не найден в реестре (нужно пройти /worker/register)
+      tags:
+        - Worker API
+
+components:
+  schemas:
+    ChunkAssignment:
+      type: object
+      required:
+        - chunkId
+        - taskId
+        - script
+        - maxExecutionMs
+      properties:
+        chunkId:
+          type: string
+          example: chk_112233
+        taskId:
+          type: string
+          example: tsk_998877
+        script:
+          type: string
+          description: Готовый исходный код Python (.py) со вшитыми данными подзадачи
+          example: |
+            import json
+            MARKING = {'P1': 1, 'P2': 0}
+            TRANSITIONS = [{'name': 'T1', 'inputs': {'P1': 1}, 'outputs': {'P1': 1, 'P2': 1}}]
+            def solve():
+                return {"deadlock_found": False, "states": 512}
+            if __name__ == "__main__":
+                print(json.dumps(solve()))
+        maxExecutionMs:
+          type: integer
+          description: Жесткий лимит времени на выполнение скрипта в миллисекундах
+          example: 15000
+
+    PullResponse:
+      type: object
+      required:
+        - chunks
+        - retryAfterMs
+      properties:
+        chunks:
+          type: array
+          description: Массив выданных подзадач (от 0 до freeSlots элементов)
+          items:
+            $ref: "#/components/schemas/ChunkAssignment"
+        retryAfterMs:
+          type: integer
+          description: Рекомендуемая пауза перед следующим запросом pull (актуально, если chunks пуст или выдан не полностью)
+          example: 2000
+
+    SubmitSuccess:
+      type: object
+      required:
+        - workerId
+        - chunkId
+        - status
+        - executionTimeMs
+        - output
+      properties:
+        workerId:
+          type: string
+          example: wrk_9a8b7c6d
+        chunkId:
+          type: string
+          example: chk_112233
+        status:
+          type: string
+          enum: [success]
+          example: success
+        executionTimeMs:
+          type: integer
+          example: 420
+        output:
+          type: string
+          description: Стандартный вывод (stdout) выполненного Python-скрипта
+          example: '{"deadlock_found": false, "states": 512}'
+    
+    SubmitError:
+      type: object
+      properties:
+        workerId:
+          type: string
+          example: wrk_9a8b7c6d
+        chunkId:
+          type: string
+          example: chk_112233
+        status:
+          type: string
+          example: error
+          enum:
+            - error
+        errorType:
+          type: string
+          example: OOM_OR_TIMEOUT
+          enum:
+            - OOM_OR_TIMEOUT
+            - SANDBOX_CRASH
+        errorMessage:
+          type: string
+          example: WASM memory limit exceeded during Numba JIT compilation
+      required:
+        - workerId
+        - chunkId
+        - status
+        - errorType
+        - errorMessage
+tags:
+  - name: Client API
+    description: Эндпоинты для взаимодействия с веб-редактором сетей Петри
+  - name: Worker API
+    description: Протокол регистрации, получения задач, heartbeat и отправки результатов для воркеров
