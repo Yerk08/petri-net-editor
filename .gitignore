@@ -6,6 +6,10 @@ client/tests/node_modules
 client/tests/package-lock.json
 client/tests/coverage
 
+# Игнорируем всё внутри папок *test
+server/dev/*test/**/
+!server/dev/*test/**/*.sh
+
 # --- Системные папки редакторов кода ---
 .vscode/
 .idea/
