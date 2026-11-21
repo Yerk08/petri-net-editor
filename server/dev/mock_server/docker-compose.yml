@@ -1,0 +1,20 @@
+services:
+  master:
+    build: ./master
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./algorithms:/app/algorithms
+    restart: unless-stopped
+
+  worker:
+    build: ./worker
+    environment:
+      - MASTER_URL=http://master:5000
+      - MAX_WORKERS=2
+    depends_on:
+      - master
+    deploy:
+      replicas: 2
+    restart: unless-stopped
+
