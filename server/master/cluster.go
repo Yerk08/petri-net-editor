@@ -11,7 +11,6 @@ import (
 	"log"
 	"sync"
 	"time"
-	"context"
 
 	lua "github.com/yuin/gopher-lua"
 )
@@ -62,7 +61,7 @@ func (mc *MasterCluster) reapDeadWorkers() {
 		}
 		// Удаляем завершенные задачи старше MaxTimeRememberMinutes минут, чтобы не текла RAM
 		for id, t := range mc.tasks {
-			if t.Status != "active" && !t.FinishedAt.IsZero() && now.Sub(t.FinishedAt) > MaxTimeRememberMinutes * time.Minute {
+			if t.Status != "active" && !t.FinishedAt.IsZero() && now.Sub(t.FinishedAt) > MaxTimeRememberMinutes*time.Minute {
 				delete(mc.tasks, id)
 			}
 		}

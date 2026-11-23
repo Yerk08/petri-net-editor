@@ -1,0 +1,41 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# 1. Ставим curl, bzip2 и empack
+RUN apt-get update && apt-get install -y --no-install-recommends curl bzip2 ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir empack
+
+# 2. Скачиваем micromamba и собираем emscripten-wasm32 окружение (Python + NumPy + Numba)
+RUN curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xvj -C /usr/local/bin --strip-components=1 bin/micromamba \
+    && micromamba create -y -p /app/env \
+      --override-channels \
+      -c https://prefix.dev/emscripten-forge-4x \
+      -c https://prefix.dev/conda-forge \
+      --platform=emscripten-wasm32 \
+      python=3.13 pyjs-dev "numpy=2.4.*" "llvmlite=0.48.0" "numba=0.66.0" \
+    && micromamba clean -a -y
+
+# 3. Упаковываем окружение в статику /app/dist и удаляем исходный env для уменьшения образа
+RUN mkdir -p /app/dist \
+    && empack pack env --env-prefix /app/env --outdir /app/dist \
+    && cp /app/env/lib_js/pyjs/pyjs_runtime_browser.* /app/dist/ \
+    && rm -rf /app/env /root/.cache
+
+EXPOSE 8080
+
+# 4. Раздаем /app/dist с заголовками CORS и правильным MIME-типом для .wasm
+RUN printf '%s\n' \
+  'import http.server, functools' \
+  'class H(http.server.SimpleHTTPRequestHandler):' \
+  '    def end_headers(self):' \
+  '        self.send_header("Access-Control-Allow-Origin", "*")' \
+  '        self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")' \
+  '        self.send_header("Cross-Origin-Resource-Policy", "cross-origin")' \
+  '        super().end_headers()' \
+  'H.extensions_map.update({".wasm": "application/wasm"})' \
+  'http.server.ThreadingHTTPServer(("0.0.0.0", 5001), functools.partial(H, directory="/app/dist")).serve_forever()' \
+  > /app/server.py
+
+CMD ["python", "/app/server.py"]

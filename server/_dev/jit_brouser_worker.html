@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head><meta charset="UTF-8"><title>Web Petri Worker</title></head>
+<body style="font-family:monospace;background:#111;color:#eee;padding:1rem">
+  <div>
+    Master: <input id="mUrl" value="http://localhost:5000" size="25">
+    WASM CDN: <input id="cUrl" value="http://localhost:5001" size="25">
+    Слоты: <input id="slots" type="number" value="2" min="1" max="16" style="width:45px">
+    <button id="btnStart">Старт</button>
+    <button id="btnStop" disabled>Стоп</button>
+  </div>
+  <pre id="log" style="margin-top:1rem;white-space:pre-wrap"></pre>
+
+  <script>
+    const log = (s) => { const el = document.getElementById('log'); el.textContent += `[${new Date().toLocaleTimeString()}] ${s}\n`; };
+
+    // Код изолята Web Worker (PyJS + Numba)
+    const makeWorkerUrl = (cdn) => {
+      const pySetup = [
+        'import os, sys, io, json, time, traceback, types, numba',
+        'from numba import njit',
+        '@njit(fastmath=True)',
+        'def _k(n):',
+        '    a = 0.0',
+        '    for i in range(1, n): a += (i * 0.5) / (i % 7 + 1.0) - (a * 1e-9)',
+        '    return a',
+        'def _bench():',
+        '    _k(10); t = time.time(); _k(20_000_000)',
+        '    return int(40 / max(time.time() - t, 0.001))',
+        'def _run(code, raw):',
+        '    old, buf = sys.stdout, io.StringIO()',
+        '    sys.stdout = buf',
+        '    try:',
+        '        mod = types.ModuleType("m")',
+        '        exec(code, mod.__dict__)',
+        '        res = mod.run_chunk(raw)',
+        '        if res is not None: print(res)',
+        '        return json.dumps({"status": "ok", "output": buf.getvalue().strip()})',
+        '    except Exception:',
+        '        tb = traceback.format_exc()',
+        '        et = "SyntaxError" if "SyntaxError" in tb else ("FatalAlgorithmError" if any(e in tb for e in ("NameError","TypeError","ValueError","RuntimeError")) else "SANDBOX_CRASH")',
+        '        return json.dumps({"status": "error", "errorType": et, "errorMessage": tb[-300:]})',
+        '    finally:',
+        '        sys.stdout = old'
+      ].join('\n');
+
+      const workerCode = `
+        importScripts('${cdn}/pyjs_runtime_browser.js');
+        let pyjs;
+        self.onmessage = async ({ data: m }) => {
+          if (m.type === 'init') {
+            pyjs = await createModule({ locateFile: p => '${cdn}/' + p });
+            await pyjs.bootstrap_from_empack_packed_environment('${cdn}/empack_env_meta.json', '${cdn}', false);
+            pyjs.exec('import os, numba');
+            const sos = pyjs.eval('[os.path.join(r,f) for r,_,fs in os.walk(os.path.dirname(numba.__file__)) for f in fs if f.endswith(".so")]');
+            for (const so of sos) await pyjs.loadDynamicLibrary(so, { loadAsync: true, global: true, nodelete: true });
+            pyjs.exec(${JSON.stringify(pySetup)});
+            self.postMessage({ type: 'ready', score: pyjs.eval('_bench()') });
+          } else if (m.type === 'run') {
+            const t0 = performance.now();
+            try {
+              const expr = '_run(' + JSON.stringify(m.script) + ', ' + JSON.stringify(m.data) + ')';
+              const res = JSON.parse(pyjs.eval(expr));
+              const heapMb = pyjs.HEAP8 ? Math.round(pyjs.HEAP8.length / 1048576) : 256;
+              self.postMessage({ type: 'res', id: m.id, ms: Math.round(performance.now() - t0), heapMb, ...res });
+            } catch (e) {
+              self.postMessage({ type: 'res', id: m.id, status: 'error', errorType: 'OOM_OR_TIMEOUT', errorMessage: String(e) });
+            }
+          }
+        };
+      `;
+      return URL.createObjectURL(new Blob([workerCode], { type: 'application/javascript' }));
+    };
+
+    let runFlag = false, wid = null, pool = [], mUrl = '', bUrl = '';
+    const post = (p, body) => fetch(mUrl + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json());
+
+    const spawnSlot = (idx) => new Promise(res => {
+      const w = new Worker(bUrl);
+      const slot = { idx, w, busy: false, cid: null, tm: null };
+      w.onmessage = ({ data: m }) => m.type === 'ready' && res({ slot, score: m.score });
+      w.postMessage({ type: 'init' });
+    });
+
+    const respawn = async (s) => {
+      s.w.terminate(); s.busy = true; s.cid = null;
+      s.w = (await spawnSlot(s.idx)).slot.w;
+      s.busy = false;
+    };
+
+    document.getElementById('btnStart').onclick = async () => {
+      mUrl = document.getElementById('mUrl').value.replace(/\/+$/, '');
+      bUrl = makeWorkerUrl(document.getElementById('cUrl').value.replace(/\/+$/, ''));
+      const n = +document.getElementById('slots').value || 2;
+      document.getElementById('btnStart').disabled = true;
+      document.getElementById('btnStop').disabled = false;
+      runFlag = true;
+
+      log(`Инициализация ${n} WASM-слотов...`);
+      const inits = await Promise.all(Array.from({ length: n }, (_, i) => spawnSlot(i)));
+      pool = inits.map(x => x.slot);
+      const score = inits[0].score * n, ram = (navigator.deviceMemory || 4) * 1024;
+
+      const reg = await post('/worker/register', { arch: 'wasm32', os: 'browser', cpu_cores: n, ram_mb: ram, benchmark_score: score });
+      wid = reg.workerId;
+      log(`Зарегистрирован: ${wid} (score=${score})`);
+
+      // Heartbeat
+      (async () => {
+        while (runFlag && wid) {
+          await new Promise(r => setTimeout(r, reg.heartbeatIntervalMs || 3000));
+          const active = pool.filter(s => s.cid).map(s => s.cid);
+          try {
+            const hb = await post('/worker/heartbeat', { workerId: wid, activeChunkIds: active, cpuLoadPercent: (active.length / n) * 100 });
+            if (hb.workerCommand === 'ban') { log('BFT BAN!'); document.getElementById('btnStop').click(); }
+            for (const cid of (hb.abortChunkIds || [])) {
+              const s = pool.find(x => x.cid === cid);
+              if (s) { clearTimeout(s.tm); await respawn(s); }
+            }
+          } catch (_) {}
+        }
+      })();
+
+      // Pull loop
+      while (runFlag) {
+        const free = pool.filter(s => !s.busy);
+        if (free.length && wid) {
+          try {
+            const { chunks = [], retryAfterMs = 2000 } = await post('/worker/pull', { workerId: wid, freeSlots: free.length, availableRamMb: ram });
+            chunks.forEach((ch, i) => {
+              const s = free[i]; if (!s) return;
+              s.busy = true; s.cid = ch.chunkId;
+              const limitMs = ch.maxExecutionMs || 15000, limitRam = ch.maxRamMb || 1024;
+
+              s.tm = setTimeout(async () => {
+                await post('/worker/submit', { workerId: wid, chunkId: ch.chunkId, status: 'error', errorType: 'OOM_OR_TIMEOUT', errorMessage: 'Timeout' }).catch(() => {});
+                await respawn(s);
+              }, limitMs);
+
+              s.w.onmessage = async ({ data: r }) => {
+                if (r.type !== 'res' || r.id !== ch.chunkId) return;
+                clearTimeout(s.tm);
+                if (r.heapMb > limitRam) {
+                  await post('/worker/submit', { workerId: wid, chunkId: ch.chunkId, status: 'error', errorType: 'OOM_OR_TIMEOUT', errorMessage: 'OOM' }).catch(() => {});
+                  return respawn(s);
+                }
+                await post('/worker/submit', r.status === 'ok'
+                  ? { workerId: wid, chunkId: ch.chunkId, status: 'ok', executionTimeMs: r.ms, output: r.output }
+                  : { workerId: wid, chunkId: ch.chunkId, status: 'error', errorType: r.errorType, errorMessage: r.errorMessage }
+                ).catch(() => {});
+                s.busy = false; s.cid = null;
+              };
+              s.w.postMessage({ type: 'run', id: ch.chunkId, script: ch.script, data: typeof ch.data === 'string' ? ch.data : JSON.stringify(ch.data) });
+            });
+            await new Promise(r => setTimeout(r, retryAfterMs));
+          } catch (_) { await new Promise(r => setTimeout(r, 2000)); }
+        } else await new Promise(r => setTimeout(r, 300));
+      }
+    };
+
+    document.getElementById('btnStop').onclick = async () => {
+      runFlag = false;
+      pool.forEach(s => { clearTimeout(s.tm); s.w.terminate(); });
+      if (wid) await post('/worker/unregister', { workerId: wid }).catch(() => {});
+      wid = null; log('Остановлен.');
+      document.getElementById('btnStart').disabled = false;
+      document.getElementById('btnStop').disabled = true;
+    };
+
+    window.onbeforeunload = () => wid && fetch(`${mUrl}/worker/unregister`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workerId: wid }), keepalive: true });
+  </script>
+</body>
+</html>

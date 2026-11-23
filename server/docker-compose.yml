@@ -15,6 +15,12 @@ services:
     depends_on:
       - master
     deploy:
-      replicas: 1
+      replicas: 0
     restart: unless-stopped
 
+  web-worker:
+    build:
+      dockerfile: Dockerfile.wasm
+    ports:
+      - "5001:5001"
+    restart: unless-stopped
