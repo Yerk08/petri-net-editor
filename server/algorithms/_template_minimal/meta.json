@@ -1,0 +1,10 @@
+{
+  "id": "_template_minimal",
+  "name": "[Минимальный] Простой запуск",
+  "schema": [
+  ],
+  "config": {
+    "max_execution_ms": 5000
+  }
+}
+
