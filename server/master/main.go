@@ -427,5 +427,13 @@ func main() {
 	cluster.registerRoutes(mux)
 
 	log.Println("Distributed Net Master запущен на http://0.0.0.0:5000")
-	log.Fatal(http.ListenAndServe("0.0.0.0:5000", withCORS(mux)))
+	srv := &http.Server{
+		Addr:              "0.0.0.0:5000",
+		Handler:           withCORS(mux),
+		ReadHeaderTimeout: 3 * time.Second,
+		ReadTimeout:       8 * time.Second,
+		WriteTimeout:      8 * time.Second,
+		IdleTimeout:       10 * time.Second,
+	}
+	log.Fatal(srv.ListenAndServe())
 }
