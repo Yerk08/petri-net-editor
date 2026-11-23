@@ -184,7 +184,7 @@ export async function startBrowserWorker() {
         }
 
         workerState.pool = inits.map(x => x.slot);
-        const totalScore = (inits.score || 500) * n;
+        const totalScore = (inits[0]?.score || 500) * n;
         const ramMb = (navigator.deviceMemory || 4) * 1024;
 
         const reg = await apiPost('/worker/register', {
