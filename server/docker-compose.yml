@@ -14,8 +14,6 @@ services:
       - MAX_CORES=8
     depends_on:
       - master
-    deploy:
-      replicas: 1
     restart: unless-stopped
 
   web-worker:
