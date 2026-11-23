@@ -1,4 +1,4 @@
-const CACHE_NAME = 'petri-editor-v1.41'; // МЕНЯЙТЕ ВЕРСИЮ ДЛЯ ОБНОВЛЕНИЯ (v2, v3...)
+const CACHE_NAME = 'petri-editor-v1.42'; // МЕНЯЙТЕ ВЕРСИЮ ДЛЯ ОБНОВЛЕНИЯ (v2, v3...)
 const ASSETS = [
   './',
   './index.html',
@@ -13,7 +13,8 @@ const ASSETS = [
   './client/modules/storage.js',
   './client/modules/theme.js',
   './client/modules/analysis.js',
-  './client/modules/dispatcher.js'
+  './client/modules/dispatcher.js',
+  './client/modules/web-worker.js'
 ];
 
 // Установка: кэшируем все ресурсы

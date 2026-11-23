@@ -15,7 +15,7 @@ services:
     depends_on:
       - master
     deploy:
-      replicas: 0
+      replicas: 1
     restart: unless-stopped
 
   web-worker:
@@ -24,3 +24,21 @@ services:
     ports:
       - "5001:5001"
     restart: unless-stopped
+
+  # proxy:
+  #   image: nginx:alpine
+  #   ports:
+  #     - "8080:80"
+  #   depends_on:
+  #     - master
+  #     - web-worker
+  #   command: >
+  #     /bin/sh -c "printf 'server {
+  #       listen 80;
+  #       location /jit/ {
+  #         proxy_pass http://web-worker:5001/;
+  #       }
+  #       location / {
+  #         proxy_pass http://master:5000;
+  #       }
+  #     }' > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"

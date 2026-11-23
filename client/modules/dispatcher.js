@@ -7,6 +7,7 @@ import {updateConnectionIndicator} from './analysis.js';
 import {renderAnalysisTaskControl} from './render.js';
 import {getAnalysisSession, getDispatcherView, pushDispatcherTask} from './state.js';
 import {saveToLocalStorage} from './storage.js';
+import {getWebWorkerState} from './web-worker.js';
 
 
 let pollingTimeoutsMap = new Map();
@@ -467,7 +468,7 @@ export async function refreshClusterStatus() {
                 <div>📦 Задачи: <b>${data.activeTasksCount}</b></div>
                 <div>🧩 Очередь: <b>${data.queuedChunksCount}</b></div>
             </div>
-        `;
+        ` + renderWebWorkerControlHtml();
     } catch (e) {
         panel.innerHTML = `
             <div class="property-group">
@@ -487,4 +488,50 @@ function startClusterStatusPolling() {
     stopClusterStatusPolling();
     refreshClusterStatus();
     clusterStatusInterval = setInterval(refreshClusterStatus, 2000);
+}
+
+/**
+ * @brief Формирует HTML-блок управления локальным браузерным воркером для помощи серверу.
+ */
+function renderWebWorkerControlHtml() {
+    const ws = getWebWorkerState();
+
+    if (ws.status === 'loading') {
+        return `
+            <div class="property-group" style="margin-top: 16px;"><h3>Помощь кластеру</h3></div>
+            <div style="padding: 10px; border: 1px solid rgba(128,128,128,0.3); border-radius: 6px; background: rgba(128,128,128,0.06);">
+                <div style="color: #856404; font-weight: bold; margin-bottom: 6px;">⏳ Загрузка Python + Numba...</div>
+                <div style="font-size: 0.85em; color: #666; margin-bottom: 8px;">Инициализация WASM (${ws.slots} поток.)</div>
+                <button class="btn-danger" style="width: 100%;" onclick="window.stopBrowserWorker()">Отмена</button>
+            </div>
+        `;
+    }
+
+    if (ws.status === 'running') {
+        return `
+            <div class="property-group" style="margin-top: 16px;"><h3>Помощь кластеру</h3></div>
+            <div style="padding: 10px; border: 1px solid rgba(40,167,69,0.4); border-radius: 6px; background: rgba(40,167,69,0.08); line-height: 1.6;">
+                <div style="color: #155724; font-weight: bold; margin-bottom: 4px;">🟢 Узел активен</div>
+                <div style="font-size: 0.85em;">ID: <code>${ws.workerId}</code></div>
+                <div style="font-size: 0.85em;">Потоков: <b>${ws.slots}</b> | Чанков: <b>${ws.completedChunks}</b></div>
+                <button class="btn-danger" style="width: 100%; margin-top: 8px;" onclick="window.stopBrowserWorker()">⏹️ Остановить помощь</button>
+            </div>
+        `;
+    }
+
+    return `
+        <div class="property-group" style="margin-top: 16px;"><h3>Помощь кластеру</h3></div>
+        <div style="padding: 10px; border: 1px solid rgba(128,128,128,0.3); border-radius: 6px; background: rgba(128,128,128,0.06);">
+            ${ws.status === 'error' ? `<div style="color: #721c24; font-size: 0.85em; margin-bottom: 6px;">⚠️ ${ws.errorMessage}</div>` : ''}
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 0.9em;">
+                <label for="ww-slots-input">Потоки (WASM):</label>
+                <input id="ww-slots-input" type="number" min="1" max="16" value="${ws.slots}" 
+                       style="width: 55px; padding: 3px 6px;" onchange="window.setWebWorkerSlots(this.value)">
+            </div>
+            <button style="width: 100%; background: #2563eb; color: #fff; border: none; padding: 7px; border-radius: 4px; cursor: pointer; font-weight: 600;" 
+                    onclick="window.startBrowserWorker()">
+                🤝 Помогать серверу
+            </button>
+        </div>
+    `;
 }
