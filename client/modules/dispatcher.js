@@ -602,6 +602,13 @@ function renderWebWorkerControlHtml(ws = getWebWorkerState()) {
         `;
     }
 
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const mobileBatteryHint = (ws.backgroundMode && isMobile) ? `
+        <div style="margin-top: 6px; padding: 6px 8px; border-radius: 4px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); font-size: 0.78em; line-height: 1.4; color: #92400e;">
+            💡 Для работы при выключенном экране отключите ограничение батареи: <b>Настройки → Приложения → Chrome → Батарея → Без ограничений</b>.
+        </div>
+    ` : '';
+
     const bgCheckboxHtml = `
         <label class="ww-bg-toggle ${ws.backgroundMode ? 'active' : ''}"
                title="Удерживает вкладку и экран активными при сворачивании на телефоне или ПК">
@@ -612,6 +619,7 @@ function renderWebWorkerControlHtml(ws = getWebWorkerState()) {
             <input type="checkbox" ${ws.backgroundMode ? 'checked' : ''}
                    onchange="window.setWebWorkerBackgroundMode(this.checked)">
         </label>
+        ${mobileBatteryHint}
     `;
 
     if (ws.status === 'running') {

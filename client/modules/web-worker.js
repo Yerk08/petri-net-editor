@@ -559,13 +559,14 @@ export async function stopBrowserWorker(errMsg = '') {
     }
 }
 // Автоматическое отключение при закрытии вкладки браузера
-window.addEventListener('beforeunload', () => {
+window.addEventListener('pagehide', () => {
     if (workerState.workerId && workerState.masterUrl) {
-        fetch(`${workerState.masterUrl}/worker/unregister`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({workerId: workerState.workerId}),
-            keepalive: true
-        });
+        const url = `${workerState.masterUrl}/worker/unregister`;
+        const payload = JSON.stringify({workerId: workerState.workerId});
+        if (navigator.sendBeacon) {
+            navigator.sendBeacon(url, new Blob([payload], {type: 'text/plain'}));
+        } else {
+            fetch(url, {method: 'POST', body: payload, keepalive: true});
+        }
     }
 });

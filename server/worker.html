@@ -1,110 +1,191 @@
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PetriCalc Worker</title>
-<style>
-  body { font-family: system-ui, sans-serif; max-width: 400px; margin: 40px auto; padding: 0 16px; background: #f4f6f9; color: #1e293b; }
-  .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin-bottom: 14px; }
-  .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-  input[type="text"] { width: 100%; padding: 7px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; margin-top: 4px; }
-  input[type="number"] { width: 65px; padding: 5px; border: 1px solid #cbd5e1; border-radius: 6px; }
-  button { width: 100%; padding: 10px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; color: #fff; background: #2563eb; }
-  button.stop { background: #dc2626; }
-  .stat { font-size: 0.9rem; line-height: 1.6; }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PetriCalc Worker</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 400px;
+      margin: 40px auto;
+      padding: 0 16px;
+      background: #f4f6f9;
+      color: #1e293b;
+    }
+
+    .card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 7px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      box-sizing: border-box;
+      margin-top: 4px;
+    }
+
+    input[type="number"] {
+      width: 65px;
+      padding: 5px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+    }
+
+    button {
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      color: #fff;
+      background: #2563eb;
+    }
+
+    button.stop {
+      background: #dc2626;
+    }
+
+    .stat {
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+
+    .battery-hint {
+      display: none;
+      margin-bottom: 10px;
+      padding: 7px 9px;
+      border-radius: 6px;
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      font-size: 0.8rem;
+      line-height: 1.4;
+      color: #92400e;
+    }
+  </style>
 </head>
+
 <body>
 
-<div class="card">
-  <h3 style="margin-top:0;">⚡ PetriCalc Worker</h3>
-  <div style="margin-bottom: 10px;">
-    <label>Сервер:</label>
-    <input type="text" id="srv" value="https://petricalc.duckdns.org">
+  <div class="card">
+    <h3 style="margin-top:0;">⚡ PetriCalc Worker</h3>
+    <div style="margin-bottom: 10px;">
+      <label>Сервер:</label>
+      <input type="text" id="srv" value="https://petricalc.duckdns.org">
+    </div>
+    <div class="row">
+      <label>Потоки (WASM):</label>
+      <input type="number" id="slots" min="1" max="16">
+    </div>
+    <label class="row" style="cursor:pointer;">
+      <span>🔋 В фоне (не засыпать)</span>
+      <input type="checkbox" id="bg">
+    </label>
+    <div id="battery-hint" class="battery-hint">
+      💡 Для работы при выключенном экране отключите ограничение батареи: <b>Настройки → Приложения → Chrome → Батарея →
+        Без ограничений</b>.
+    </div>
+    <div id="info" class="stat" style="margin: 10px 0;"></div>
+    <button id="btn">🤝 Помогать серверу</button>
   </div>
-  <div class="row">
-    <label>Потоки (WASM):</label>
-    <input type="number" id="slots" min="1" max="16">
+
+  <div class="card">
+    <h4 style="margin:0 0 8px 0;">Кластер</h4>
+    <div id="cluster" class="stat">Загрузка...</div>
   </div>
-  <label class="row" style="cursor:pointer;">
-    <span>🔋 В фоне (не засыпать)</span>
-    <input type="checkbox" id="bg">
-  </label>
-  <div id="info" class="stat" style="margin: 10px 0;"></div>
-  <button id="btn">🤝 Помогать серверу</button>
-</div>
 
-<div class="card">
-  <h4 style="margin:0 0 8px 0;">Кластер</h4>
-  <div id="cluster" class="stat">Загрузка...</div>
-</div>
+  <script type="module">
+    import {
+      getWebWorkerState,
+      setWebWorkerSlots,
+      setWebWorkerBackgroundMode,
+      startBrowserWorker,
+      stopBrowserWorker
+    } from '../client/modules/web-worker.js'; // Укажите ваш путь к web_worker.js
 
-<script type="module">
-  import {
-    getWebWorkerState,
-    setWebWorkerSlots,
-    setWebWorkerBackgroundMode,
-    startBrowserWorker,
-    stopBrowserWorker
-  } from '../client/modules/web-worker.js'; // Укажите ваш путь к web_worker.js
+    const srvEl = document.getElementById('srv');
+    const slotsEl = document.getElementById('slots');
+    const bgEl = document.getElementById('bg');
+    const infoEl = document.getElementById('info');
+    const btnEl = document.getElementById('btn');
+    const clusterEl = document.getElementById('cluster');
+    const hintEl = document.getElementById('battery-hint');
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-  const srvEl = document.getElementById('srv');
-  const slotsEl = document.getElementById('slots');
-  const bgEl = document.getElementById('bg');
-  const infoEl = document.getElementById('info');
-  const btnEl = document.getElementById('btn');
-  const clusterEl = document.getElementById('cluster');
+    const ws = getWebWorkerState();
+    slotsEl.value = ws.slots;
+    bgEl.checked = ws.backgroundMode;
 
-  const ws = getWebWorkerState();
-  slotsEl.value = ws.slots;
-  bgEl.checked = ws.backgroundMode;
+    const updateHint = () => {
+      hintEl.style.display = (isMobile && bgEl.checked) ? 'block' : 'none';
+    };
+    updateHint();
 
-  slotsEl.oninput = () => setWebWorkerSlots(slotsEl.value);
-  bgEl.onchange = () => setWebWorkerBackgroundMode(bgEl.checked);
+    bgEl.addEventListener('change', () => {
+      setWebWorkerBackgroundMode(bgEl.checked);
+      updateHint();
+    });
 
-  btnEl.onclick = () => {
-    if (ws.status === 'loading' || ws.status === 'running') {
-      stopBrowserWorker();
-    } else {
-      startBrowserWorker(srvEl.value);
-    }
-    render();
-  };
+    slotsEl.oninput = () => setWebWorkerSlots(slotsEl.value);
+    bgEl.onchange = () => setWebWorkerBackgroundMode(bgEl.checked);
 
-  function render() {
-    srvEl.disabled = slotsEl.disabled = (ws.status === 'loading' || ws.status === 'running');
-    if (ws.status === 'loading') {
-      infoEl.textContent = `⏳ Загрузка WASM (${ws.slots} поток.)...`;
-      btnEl.textContent = 'Отмена';
-      btnEl.className = 'stop';
-    } else if (ws.status === 'running') {
-      infoEl.innerHTML = `🟢 Активен: <code>${ws.workerId}</code><br>Выполнено чанков: <b>${ws.completedChunks}</b>`;
-      btnEl.textContent = '⏹️ Остановить';
-      btnEl.className = 'stop';
-    } else {
-      infoEl.textContent = ws.status === 'error' ? `⚠️ ${ws.errorMessage}` : '';
-      btnEl.textContent = '🤝 Помогать серверу';
-      btnEl.className = '';
-    }
-  }
+    btnEl.onclick = () => {
+      if (ws.status === 'loading' || ws.status === 'running') {
+        stopBrowserWorker();
+      } else {
+        startBrowserWorker(srvEl.value);
+      }
+      render();
+    };
 
-  // Автообновление интерфейса и статуса кластера
-  async function loop() {
-    render();
-    const url = srvEl.value.trim().replace(/\/+$/, '');
-    if (url) {
-      try {
-        const d = await (await fetch(`${url}/api/v1/cluster_status`)).json();
-        clusterEl.innerHTML = `Узлы: <b>${d.onlineWorkers}</b> | Cores: <b>${d.totalCpuCores}</b> | Power: <b>${d.totalBenchmarkScore}</b><br>Задачи: <b>${d.activeTasksCount}</b> | Очередь: <b>${d.queuedChunksCount}</b>`;
-      } catch (_) {
-        clusterEl.textContent = '🔴 Сервер недоступен';
+    function render() {
+      srvEl.disabled = slotsEl.disabled = (ws.status === 'loading' || ws.status === 'running');
+      if (ws.status === 'loading') {
+        infoEl.textContent = `⏳ Загрузка WASM (${ws.slots} поток.)...`;
+        btnEl.textContent = 'Отмена';
+        btnEl.className = 'stop';
+      } else if (ws.status === 'running') {
+        infoEl.innerHTML = `🟢 Активен: <code>${ws.workerId}</code><br>Выполнено чанков: <b>${ws.completedChunks}</b>`;
+        btnEl.textContent = '⏹️ Остановить';
+        btnEl.className = 'stop';
+      } else {
+        infoEl.textContent = ws.status === 'error' ? `⚠️ ${ws.errorMessage}` : '';
+        btnEl.textContent = '🤝 Помогать серверу';
+        btnEl.className = '';
       }
     }
-    setTimeout(loop, 1000);
-  }
-  loop();
-</script>
-</body>
-</html>
 
+    // Автообновление интерфейса и статуса кластера
+    async function loop() {
+      render();
+      const url = srvEl.value.trim().replace(/\/+$/, '');
+      if (url) {
+        try {
+          const d = await (await fetch(`${url}/api/v1/cluster_status`)).json();
+          clusterEl.innerHTML = `Узлы: <b>${d.onlineWorkers}</b> | Cores: <b>${d.totalCpuCores}</b> | Power: <b>${d.totalBenchmarkScore}</b><br>Задачи: <b>${d.activeTasksCount}</b> | Очередь: <b>${d.queuedChunksCount}</b>`;
+        } catch (_) {
+          clusterEl.textContent = '🔴 Сервер недоступен';
+        }
+      }
+      setTimeout(loop, 1000);
+    }
+    loop();
+  </script>
+</body>
+
+</html>
