@@ -577,7 +577,7 @@ function updateWebWorkerControlIfNeeded(container) {
     }
 
     const ws = getWebWorkerState();
-    const currentKey = `${ws.status}|${ws.slots}|${ws.workerId}|${ws.completedChunks}|${ws.errorMessage}`;
+    const currentKey = `${ws.status}|${ws.slots}|${ws.backgroundMode}|${ws.workerId}|${ws.completedChunks}|${ws.errorMessage}`;
 
     if (container.dataset.renderKey === currentKey) {
         return;
@@ -602,6 +602,18 @@ function renderWebWorkerControlHtml(ws = getWebWorkerState()) {
         `;
     }
 
+    const bgCheckboxHtml = `
+        <label class="ww-bg-toggle ${ws.backgroundMode ? 'active' : ''}"
+               title="Удерживает вкладку и экран активными при сворачивании на телефоне или ПК">
+            <span class="ww-bg-toggle-label">
+                <span>🔋</span>
+                <span>В фоне</span>
+            </span>
+            <input type="checkbox" ${ws.backgroundMode ? 'checked' : ''}
+                   onchange="window.setWebWorkerBackgroundMode(this.checked)">
+        </label>
+    `;
+
     if (ws.status === 'running') {
         return `
             <div class="property-group" style="margin-top: 16px;"><h3>Помощь кластеру</h3></div>
@@ -609,6 +621,7 @@ function renderWebWorkerControlHtml(ws = getWebWorkerState()) {
                 <div style="color: #155724; font-weight: bold; margin-bottom: 4px;">🟢 Узел активен</div>
                 <div style="font-size: 0.85em;">ID: <code>${ws.workerId}</code></div>
                 <div style="font-size: 0.85em;">Потоков: <b>${ws.slots}</b> | Чанков: <b>${ws.completedChunks}</b></div>
+                ${bgCheckboxHtml}
                 <button class="btn-danger" style="width: 100%; margin-top: 8px;" onclick="window.stopBrowserWorker()">⏹️ Остановить помощь</button>
             </div>
         `;
@@ -618,12 +631,13 @@ function renderWebWorkerControlHtml(ws = getWebWorkerState()) {
         <div class="property-group" style="margin-top: 16px;"><h3>Помощь кластеру</h3></div>
         <div style="padding: 10px; border: 1px solid rgba(128,128,128,0.3); border-radius: 6px; background: rgba(128,128,128,0.06);">
             ${ws.status === 'error' ? `<div style="color: #721c24; font-size: 0.85em; margin-bottom: 6px;">⚠️ ${ws.errorMessage}</div>` : ''}
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 0.9em;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 0.9em;">
                 <label for="ww-slots-input">Потоки (WASM):</label>
                 <input id="ww-slots-input" type="number" min="1" max="16" value="${ws.slots}" 
                        style="width: 55px; padding: 3px 6px;" oninput="window.setWebWorkerSlots(this.value)">
             </div>
-            <button style="width: 100%; background: #2563eb; color: #fff; border: none; padding: 7px; border-radius: 4px; cursor: pointer; font-weight: 600;" 
+            ${bgCheckboxHtml}
+            <button style="width: 100%; margin-top: 8px; background: #2563eb; color: #fff; border: none; padding: 7px; border-radius: 4px; cursor: pointer; font-weight: 600;" 
                     onclick="window.startBrowserWorker()">
                 🤝 Помогать серверу
             </button>

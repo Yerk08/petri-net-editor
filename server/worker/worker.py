@@ -141,8 +141,8 @@ def run_micro_benchmark() -> int:
     run_sec = max(t2 - t1, 0.001)
     comp_sec = max((t1 - t0) - run_sec, 0.001)
 
-    # Учитываем и скорость счета (85%), и скорость JIT-компиляции (15%)
-    effective_time = run_sec + 0.15 * comp_sec
+    # Учитываем и скорость счета (93%), и скорость JIT-компиляции (7%)
+    effective_time = run_sec + 0.07 * comp_sec
     single_core_score = int(100.0 / effective_time)
     return single_core_score * MAX_CORES
 

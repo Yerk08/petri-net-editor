@@ -624,3 +624,49 @@ body.mode-analysis-color .color-filter-box {
     border: none;
     display: block;
 }
+
+
+
+
+/* Карточка-переключатель фонового режима воркера */
+.ww-bg-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 8px;
+    padding: 6px 8px;
+    border-radius: 5px;
+    border: 1px solid rgba(128, 128, 128, 0.28);
+    background: rgba(128, 128, 128, 0.05);
+    font-size: 0.85em;
+    font-weight: 500;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.ww-bg-toggle:hover {
+    border-color: rgba(37, 99, 235, 0.4);
+    background: rgba(37, 99, 235, 0.06);
+}
+
+.ww-bg-toggle.active,
+.ww-bg-toggle:has(input:checked) {
+    border-color: rgba(37, 99, 235, 0.45);
+    background: rgba(37, 99, 235, 0.12);
+    font-weight: 600;
+}
+
+.ww-bg-toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.ww-bg-toggle input[type="checkbox"] {
+    accent-color: #2563eb;
+    width: 15px;
+    height: 15px;
+    margin: 0;
+    cursor: pointer;
+}

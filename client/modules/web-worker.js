@@ -5,10 +5,13 @@
 
 import {getAnalysisSession, getDispatcherView} from './state.js';
 
+const BG_MODE_STORAGE_KEY = 'petri_ww_background_mode';
+
 const workerState = {
     status: 'stopped',  // 'stopped' | 'loading' | 'running' | 'error'
     workerId: null,
     slots: Math.min(4, navigator.hardwareConcurrency || 2),
+    backgroundMode: localStorage?.getItem(BG_MODE_STORAGE_KEY) === '1',
     completedChunks: 0,
     errorMessage: '',
     masterUrl: '',
@@ -35,7 +38,9 @@ export function setWebWorkerSlots(val) {
  */
 function buildWorkerBlobUrl(cdnUrl) {
     const pySetup = [
-        'import os, sys, io, json, time, traceback, types, numba',
+        'import os',
+        'os.environ.setdefault("NUMBA_CPU_FEATURES", "+simd128,+nontrapping-fptoint,+bulk-memory,+sign-ext")',
+        'import sys, io, json, time, traceback, types, numba',
         'import numpy as np',
         'from numba import njit',
         '@njit(fastmath=True)',
@@ -48,14 +53,14 @@ function buildWorkerBlobUrl(cdnUrl) {
         '    return count',
         'def _bench():',
         '    data = np.random.RandomState(42).randint(1, 101, size=400).astype(np.int32)',
-        '    t0 = time.time()',
+        '    t0 = time.perf_counter()',
         '    _k(data, 1.0)',
-        '    t1 = time.time()',
+        '    t1 = time.perf_counter()',
         '    _k(data, 16.0)',
-        '    t2 = time.time()',
+        '    t2 = time.perf_counter()',
         '    run_s = max(t2 - t1, 0.001)',
         '    comp_s = max((t1 - t0) - run_s, 0.001)',
-        '    return int(100.0 / (run_s + 0.15 * comp_s))',
+        '    return int(100.0 / (run_s + 0.07 * comp_s))',
         'def _run(code, raw):',
         '    old, buf = sys.stdout, io.StringIO()',
         '    sys.stdout = buf',
@@ -85,7 +90,8 @@ function buildWorkerBlobUrl(cdnUrl) {
             });
             await pyjs.bootstrap_from_empack_packed_environment('${
         cdnUrl}/empack_env_meta.json', '${cdnUrl}', false);
-            pyjs.exec('import os, numba');
+            pyjs.exec('import os; os.environ["NUMBA_CPU_FEATURES"] = "+simd128,+nontrapping-fptoint,+bulk-memory,+sign-ext"');
+            pyjs.exec('import numba');
             const sos = pyjs.eval('[os.path.join(r,f) for r,_,fs in os.walk(os.path.dirname(numba.__file__)) for f in fs if f.endswith(".so")]');
             for (const so of sos) {
               await pyjs.loadDynamicLibrary(so, { loadAsync: true, global: true, nodelete: true });
@@ -180,6 +186,111 @@ function notifyUi() {
     }
 }
 
+
+
+
+
+
+
+
+
+const keepAlive = {
+    wakeLock: null,
+    audioEl: null,
+    releaseLock: null
+};
+
+async function enableBackgroundKeepAlive() {
+    // 1. Web Lock: запрещает Chromium замораживать или выгружать вкладку
+    if (navigator.locks && !keepAlive.releaseLock) {
+        navigator.locks.request('petri-cluster-worker', () => new Promise(resolve => {
+            keepAlive.releaseLock = resolve;
+        })).catch(() => {});
+    }
+
+    // 2. Screen Wake Lock: не дает экрану погаснуть на телефоне
+    if ('wakeLock' in navigator && !keepAlive.wakeLock) {
+        try {
+            const wl = await navigator.wakeLock.request('screen');
+            if (workerState.status === 'running' && workerState.backgroundMode) {
+                keepAlive.wakeLock = wl;
+            } else {
+                wl.release().catch(() => {});
+            }
+        } catch (_) {}
+    }
+
+    // 3. Silent Audio Loop: удерживает процесс живым при сворачивании на Android
+    if (!keepAlive.audioEl) {
+        try {
+            const silentWav = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+            const audio = new Audio(silentWav);
+            audio.loop = true;
+            audio.volume = 0.001;
+            keepAlive.audioEl = audio; // Сохраняем ссылку ДО await!
+            await audio.play();
+
+            // Если за время запуска пользователь успел выключить режим — сразу глушим
+            if (workerState.status !== 'running' || !workerState.backgroundMode) {
+                disableBackgroundKeepAlive();
+            }
+        } catch (_) {
+            keepAlive.audioEl = null;
+        }
+    }
+}
+
+function disableBackgroundKeepAlive() {
+    if (keepAlive.releaseLock) {
+        keepAlive.releaseLock();
+        keepAlive.releaseLock = null;
+    }
+    if (keepAlive.wakeLock) {
+        keepAlive.wakeLock.release().catch(() => {});
+        keepAlive.wakeLock = null;
+    }
+    if (keepAlive.audioEl) {
+        try {
+            keepAlive.audioEl.pause();
+            keepAlive.audioEl.removeAttribute('src');
+            keepAlive.audioEl.load(); // Принудительно закрывает медиа-сессию и убирает значок 🔊
+        } catch (_) {}
+        keepAlive.audioEl = null;
+    }
+}
+
+// Повторно запрашиваем Wake Lock при возврате на вкладку (браузер сбрасывает его при сворачивании)
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && workerState.status === 'running' && workerState.backgroundMode && 'wakeLock' in navigator) {
+        navigator.wakeLock.request('screen').then(wl => { keepAlive.wakeLock = wl; }).catch(() => {});
+    }
+});
+
+export function setWebWorkerBackgroundMode(enabled) {
+    workerState.backgroundMode = Boolean(enabled);
+    try {
+        localStorage.setItem(BG_MODE_STORAGE_KEY, workerState.backgroundMode ? '1' : '0');
+    } catch (_) {}
+    
+    if (workerState.status === 'running') {
+        if (workerState.backgroundMode) {
+            enableBackgroundKeepAlive();
+        } else {
+            disableBackgroundKeepAlive();
+        }
+    }
+    notifyUi();
+}
+
+
+
+
+
+
+
+
+
+
 /**
  * @brief Запускает браузерный воркер и подключает его к текущему серверу.
  */
@@ -243,6 +354,9 @@ export async function startBrowserWorker() {
         workerState.workerId = reg.workerId;
         workerState.hbIntervalMs = reg.heartbeatIntervalMs || 2000;
         workerState.status = 'running';
+        if (workerState.backgroundMode) {
+            enableBackgroundKeepAlive();
+        }
         notifyUi();
 
         // Сразу запускаем работу на 1-м слоте!
@@ -404,6 +518,7 @@ async function runPullLoop(ramMb) {
  * @brief Штатно останавливает воркер, убивает потоки и уведомляет мастер.
  */
 export async function stopBrowserWorker(errMsg = '') {
+    disableBackgroundKeepAlive();
     const prevId = workerState.workerId;
     const prevUrl = workerState.masterUrl;
     workerState.status = errMsg ? 'error' : 'stopped';

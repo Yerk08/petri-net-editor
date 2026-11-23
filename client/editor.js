@@ -13,7 +13,7 @@ import {render, renderAnalysisTaskControl} from './modules/render.js';
 import {applySimulationState, clearPetriNet, currentMode, deleteObject, findComment, findNode, fireTransition, getAnalysisSession, getAnalysisState, getSimulation, getState, redoTransition, resetSimulation, selectedId, setMode, setSelectedId, toggleFilterColor, undoTransition, updateArcWeight, updateCommentText, updateElementColor, updateName, updateTokens} from './modules/state.js';
 import {copyJSONToClipboard, exportToFile, exportToPDF, exportToSVG, importFromFile, loadFromLocalStorage, pasteJSONFromClipboard} from './modules/storage.js';
 import {loadToggleTheme, toggleTheme} from './modules/theme.js';
-import {setWebWorkerSlots, startBrowserWorker, stopBrowserWorker} from './modules/web-worker.js';
+import {setWebWorkerSlots, startBrowserWorker, stopBrowserWorker, setWebWorkerBackgroundMode} from './modules/web-worker.js';
 
 
 
@@ -258,6 +258,7 @@ window.pasteJSONFromClipboard = pasteJSONFromClipboard;
 window.startBrowserWorker = startBrowserWorker;
 window.stopBrowserWorker = stopBrowserWorker;
 window.setWebWorkerSlots = setWebWorkerSlots;
+window.setWebWorkerBackgroundMode = setWebWorkerBackgroundMode;
 
 window.onCanvasMouseDown = onCanvasMouseDown;
 window.onNodeMouseDown = onNodeMouseDown;
