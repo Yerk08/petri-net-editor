@@ -3,8 +3,25 @@
  * @brief Браузерный вычислительный узел (PyJS + Numba WASM) для помощи кластеру.
  */
 
-import {getAnalysisSession, getDispatcherView} from './state.js';
+let uiUpdateCallback = null;
+let defaultServerProvider = () => '';
 
+/**
+ * @brief Регистрирует внешние обработчики UI и провайдер адреса сервера (для интеграции с
+ * редактором).
+ */
+export function configureWebWorker({onUiUpdate, getServerUrl} = {}) {
+    if (onUiUpdate) uiUpdateCallback = onUiUpdate;
+    if (getServerUrl) defaultServerProvider = getServerUrl;
+}
+
+function notifyUi() {
+    if (typeof uiUpdateCallback === 'function') {
+        uiUpdateCallback();
+    }
+}
+
+/// Фоновый запуск воркера даже при свернутой вкладке
 const BG_MODE_STORAGE_KEY = 'petri_ww_background_mode';
 
 const workerState = {
@@ -180,15 +197,6 @@ async function respawnSlot(s) {
     }
 }
 
-function notifyUi() {
-    if (getDispatcherView().isDispatcherMode && typeof window.refreshClusterStatus === 'function') {
-        window.refreshClusterStatus();
-    }
-}
-
-
-
-
 
 
 
@@ -203,9 +211,11 @@ const keepAlive = {
 async function enableBackgroundKeepAlive() {
     // 1. Web Lock: запрещает Chromium замораживать или выгружать вкладку
     if (navigator.locks && !keepAlive.releaseLock) {
-        navigator.locks.request('petri-cluster-worker', () => new Promise(resolve => {
-            keepAlive.releaseLock = resolve;
-        })).catch(() => {});
+        navigator.locks
+            .request('petri-cluster-worker', () => new Promise(resolve => {
+                                                 keepAlive.releaseLock = resolve;
+                                             }))
+            .catch(() => {});
     }
 
     // 2. Screen Wake Lock: не дает экрану погаснуть на телефоне
@@ -217,17 +227,19 @@ async function enableBackgroundKeepAlive() {
             } else {
                 wl.release().catch(() => {});
             }
-        } catch (_) {}
+        } catch (_) {
+        }
     }
 
     // 3. Silent Audio Loop: удерживает процесс живым при сворачивании на Android
     if (!keepAlive.audioEl) {
         try {
-            const silentWav = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+            const silentWav =
+                'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
             const audio = new Audio(silentWav);
             audio.loop = true;
             audio.volume = 0.001;
-            keepAlive.audioEl = audio; // Сохраняем ссылку ДО await!
+            keepAlive.audioEl = audio;  // Сохраняем ссылку ДО await!
             await audio.play();
 
             // Если за время запуска пользователь успел выключить режим — сразу глушим
@@ -253,16 +265,22 @@ function disableBackgroundKeepAlive() {
         try {
             keepAlive.audioEl.pause();
             keepAlive.audioEl.removeAttribute('src');
-            keepAlive.audioEl.load(); // Принудительно закрывает медиа-сессию и убирает значок 🔊
-        } catch (_) {}
+            keepAlive.audioEl.load();  // Принудительно закрывает медиа-сессию и убирает значок 🔊
+        } catch (_) {
+        }
         keepAlive.audioEl = null;
     }
 }
 
 // Повторно запрашиваем Wake Lock при возврате на вкладку (браузер сбрасывает его при сворачивании)
 document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && workerState.status === 'running' && workerState.backgroundMode && 'wakeLock' in navigator) {
-        navigator.wakeLock.request('screen').then(wl => { keepAlive.wakeLock = wl; }).catch(() => {});
+    if (!document.hidden && workerState.status === 'running' && workerState.backgroundMode &&
+        'wakeLock' in navigator) {
+        navigator.wakeLock.request('screen')
+            .then(wl => {
+                keepAlive.wakeLock = wl;
+            })
+            .catch(() => {});
     }
 });
 
@@ -270,8 +288,9 @@ export function setWebWorkerBackgroundMode(enabled) {
     workerState.backgroundMode = Boolean(enabled);
     try {
         localStorage.setItem(BG_MODE_STORAGE_KEY, workerState.backgroundMode ? '1' : '0');
-    } catch (_) {}
-    
+    } catch (_) {
+    }
+
     if (workerState.status === 'running') {
         if (workerState.backgroundMode) {
             enableBackgroundKeepAlive();
@@ -287,17 +306,13 @@ export function setWebWorkerBackgroundMode(enabled) {
 
 
 
-
-
-
-
 /**
  * @brief Запускает браузерный воркер и подключает его к текущему серверу.
  */
-export async function startBrowserWorker() {
+export async function startBrowserWorker(customServerUrl = '') {
     if (workerState.status === 'loading' || workerState.status === 'running') return;
 
-    const rawUrl = getAnalysisSession().defaultServer || '';
+    const rawUrl = customServerUrl || defaultServerProvider() || '';
     const serverUrl = rawUrl.trim().replace(/\/+$/, '');
     if (!serverUrl) {
         workerState.status = 'error';
@@ -321,8 +336,7 @@ export async function startBrowserWorker() {
         if (!workerState.wasmModule && WebAssembly.compileStreaming) {
             try {
                 workerState.wasmModule = await WebAssembly.compileStreaming(
-                    fetch(`${workerState.wasmCdnUrl}/pyjs_runtime_browser.wasm`)
-                );
+                    fetch(`${workerState.wasmCdnUrl}/pyjs_runtime_browser.wasm`));
             } catch (_) {
                 workerState.wasmModule = null;
             }

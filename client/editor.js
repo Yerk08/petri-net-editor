@@ -10,10 +10,10 @@ import {cancelAnalysisTask, cancelAnalysisTaskById, clearAllDispatcherTasks, clo
 import {onCanvasMouseDown, onCanvasMouseMove, onNodeMouseDown, onNodeMouseMove, onNodeMouseUp} from './modules/events.js';
 import {initHotKeys} from './modules/hotkeys.js';
 import {render, renderAnalysisTaskControl} from './modules/render.js';
-import {applySimulationState, clearPetriNet, currentMode, deleteObject, findComment, findNode, fireTransition, getAnalysisSession, getAnalysisState, getSimulation, getState, redoTransition, resetSimulation, selectedId, setMode, setSelectedId, toggleFilterColor, undoTransition, updateArcWeight, updateCommentText, updateElementColor, updateName, updateTokens} from './modules/state.js';
+import {applySimulationState, clearPetriNet, currentMode, deleteObject, findComment, findNode, fireTransition, getAnalysisSession, getAnalysisState, getSimulation, getState, redoTransition, resetSimulation, selectedId, setMode, setSelectedId, toggleFilterColor, undoTransition, updateArcWeight, updateCommentText, updateElementColor, updateName, updateTokens, getDispatcherView} from './modules/state.js';
 import {copyJSONToClipboard, exportToFile, exportToPDF, exportToSVG, importFromFile, loadFromLocalStorage, pasteJSONFromClipboard} from './modules/storage.js';
 import {loadToggleTheme, toggleTheme} from './modules/theme.js';
-import {setWebWorkerSlots, startBrowserWorker, stopBrowserWorker, setWebWorkerBackgroundMode} from './modules/web-worker.js';
+import {configureWebWorker, setWebWorkerBackgroundMode, setWebWorkerSlots, startBrowserWorker, stopBrowserWorker} from './modules/web-worker.js';
 
 
 
@@ -273,6 +273,17 @@ function init() {
     loadFromLocalStorage();  // Загружаем сохраненную сеть
     initHotKeys();           // Инициализируем горячие клавиши
     render();                // Делаем первичный рендеринг
+
+    // Конфигурируем веб-воркер предварительно
+    configureWebWorker({
+        getServerUrl: () => getAnalysisSession().defaultServer || '',
+        onUiUpdate: () => {
+            if (getDispatcherView().isDispatcherMode &&
+                typeof window.refreshClusterStatus === 'function') {
+                window.refreshClusterStatus();
+            }
+        }
+    });
 }
 
 if (document.readyState === 'loading') {
