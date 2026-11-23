@@ -111,10 +111,10 @@ func newSandboxedLuaState() *lua.LState {
 		L.Push(lua.LString(pair.n))
 		L.Call(1, 0)
 	}
-	// Блокируем небезопасные глобальные функции
-	L.SetGlobal("dofile", lua.LNil)
-	L.SetGlobal("loadfile", lua.LNil)
-	L.SetGlobal("require", lua.LNil)
+	// Опционально блокируем небезопасные глобальные функции
+	// L.SetGlobal("dofile", lua.LNil)
+	// L.SetGlobal("loadfile", lua.LNil)
+	// L.SetGlobal("require", lua.LNil)
 	return L
 }
 

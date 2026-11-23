@@ -569,6 +569,7 @@ components:
         - chunkId
         - taskId
         - script
+        - data
         - maxExecutionMs
       properties:
         chunkId:
@@ -579,15 +580,18 @@ components:
           example: tsk_998877
         script:
           type: string
-          description: Готовый исходный код Python (.py) со вшитыми данными подзадачи
+          description: Готовый исходный код Python (.py). Может быть закеширован
           example: |
             import json
-            MARKING = {'P1': 1, 'P2': 0}
-            TRANSITIONS = [{'name': 'T1', 'inputs': {'P1': 1}, 'outputs': {'P1': 1, 'P2': 1}}]
             def solve():
                 return {"deadlock_found": False, "states": 512}
-            if __name__ == "__main__":
-                print(json.dumps(solve()))
+            def run_chunk(raw_data):
+                return json.dumps(solve(json.loads(raw_data)))
+        data:
+          type: string
+          description: Данные передачи, на которых должен исполняться код
+          example: |
+            "{\"marking\": {\"P1\": 3, \"P2\": 0}}"
         maxExecutionMs:
           type: integer
           description: Жесткий лимит времени на выполнение скрипта в миллисекундах

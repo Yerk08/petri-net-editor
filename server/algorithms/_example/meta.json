@@ -1,0 +1,26 @@
+{
+  "id": "reachability_graph",
+  "name": "Построение графа достижимости и поиск тупиков",
+  "schema": [
+    {
+      "id": "max_depth",
+      "name": "Максимальная глубина поиска",
+      "type": "number"
+    },
+    {
+      "id": "transitions",
+      "name": "Переходы сети",
+      "type": "color_filter"
+    },
+    {
+      "id": "initial_marking",
+      "name": "Начальная разметка",
+      "type": "marking_filter"
+    }
+  ],
+  "config": {
+    "max_execution_ms": 15000,
+    "bft_replicas": 2,
+    "max_bft_rounds": 3
+  }
+}

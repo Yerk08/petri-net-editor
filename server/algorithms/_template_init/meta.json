@@ -1,0 +1,31 @@
+{
+  "id": "_template_init",
+  "name": "[Шаблон] Демонстрация всех возможностей API",
+  "schema": [
+    {
+      "id": "input_number",
+      "name": "Числовой параметр (например, количество итераций)",
+      "type": "number"
+    },
+    {"id": "input_str", "name": "Строковый параметр (string)", "type": "string"},
+    {"id": "input_desc", "name": "Текстовое описание (description)", "type": "description"},
+    {"id": "input_dict", "name": "Выпадающий список (dict)", "type": "dict", "options": {"opt1": "Вариант А", "opt2": "Вариант Б"}},
+    {"id": "input_list", "name": "Список чекбоксов (list)", "type": "list", "options": [{"name": "Элемент 1", "value": "val1"}, {"name": "Элемент 2", "value": "val2"}]},
+    {
+      "id": "transitions",
+      "name": "Фильтр переходов сети",
+      "type": "color_filter"
+    },
+    {
+      "id": "initial_marking",
+      "name": "Фильтр начальной разметки",
+      "type": "marking_filter"
+    }
+  ],
+  "config": {
+    "max_execution_ms": 10000,
+    "bft_replicas": 2,
+    "max_bft_rounds": 3,
+    "custom_multiplier": 10
+  }
+}
