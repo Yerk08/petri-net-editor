@@ -10,76 +10,124 @@ import {saveToLocalStorage} from './storage.js';
 import {getWebWorkerState} from './web-worker.js';
 
 
-let pollingTimeoutsMap = new Map();
+let batchPollTimers = new Map(); // serverUrl -> timeoutId
 
 /**
- * @brief Адаптивный поллинг состояния задачи на сервере.
- * @async
- * @param {string} taskId ID задачи.
- * @param {string} serverUrl URL сервера.
- * @param {number} [delay=500] Задержка опроса.
- * @note **Зависимости:** Вызывает `updateConnectionIndicator()` (`analysis.js`) при сбоях. Меняет
- * сессию и реестр через `pushDispatcherTask()` (`state.js`). Триггерит рендеры
- * `renderAnalysisTaskControl()` и `viewInDispatcher()`.
+ * @brief Запускает (или гарантирует работу) пакетного поллера для указанного сервера.
  */
 export function startPolling(taskId, serverUrl) {
-    if (pollingTimeoutsMap.has(taskId)) {
-        clearTimeout(pollingTimeoutsMap.get(taskId));
+    const cleanUrl = serverUrl.replace(/\/+$/, '');
+    if (!batchPollTimers.has(cleanUrl)) {
+        scheduleBatchPoll(cleanUrl, 0); // Первый опрос сразу или с минимальной задержкой
+    }
+}
+
+function scheduleBatchPoll(serverUrl, delay = 500) {
+    if (batchPollTimers.has(serverUrl)) {
+        clearTimeout(batchPollTimers.get(serverUrl));
     }
 
     const timeoutId = setTimeout(async () => {
+        const dView = getDispatcherView();
         const session = getAnalysisSession();
+        const activeStatuses = ['active', 'processing', 'pending'];
+
+        // Собираем все активные задачи этого сервера (из реестра диспетчера + текущую сессию)
+        const taskIdsSet = new Set();
+        dView.tasks.forEach(t => {
+            if (t.serverUrl.replace(/\/+$/, '') === serverUrl && activeStatuses.includes(t.taskStatus)) {
+                taskIdsSet.add(t.taskId);
+            }
+        });
+        if (session.taskId && activeStatuses.includes(session.taskStatus) &&
+            (session.defaultServer || '').replace(/\/+$/, '') === serverUrl) {
+            taskIdsSet.add(session.taskId);
+        }
+
+        const taskIds = Array.from(taskIdsSet);
+        if (taskIds.length === 0) {
+            batchPollTimers.delete(serverUrl);
+            return;
+        }
 
         try {
-            const response = await fetch(`${serverUrl}/api/v1/check_task?taskId=${taskId}`);
-            if (!response.ok) {
-                console.log(`Ошибка сервера при опросе: ${response.status}`);
-                return;
-            }
-            const data = await response.json();
+            const response = await fetch(`${serverUrl}/api/v1/check_tasks`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({taskIds})
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-            // Синхронизируем статус и результаты прямо в глобальный реестр Диспетчера задач
-            const updatedTaskData = {
-                taskId: taskId,
-                taskStatus: data.status,
-                shortResult: data.status === 'ready' ?
-                    data.short_result :
-                    (data.status === 'failed' ? data.error : null)
-            };
-            pushDispatcherTask(updatedTaskData);
+            const payload = await response.json();
+            const tasksMap = payload.tasks || {};
 
-            // Если опрашиваемая задача параллельно выбрана как активная в боковой панели —
-            // обновляем сессию
-            if (session.taskId === taskId) {
-                if (data.status === 'ready') {
-                    session.taskStatus = 'ready';
-                    session.shortResult = data.short_result || 'Анализ успешно завершен.';
-                } else if (data.status === 'failed') {
-                    session.taskStatus = 'failed';
-                    session.shortResult = data.error || 'Ошибка при выполнении расчетов.';
+            let anyFinished = false;
+            let sessionUpdated = false;
+
+            for (const id of taskIds) {
+                const data = tasksMap[id];
+                if (!data) continue;
+
+                pushDispatcherTask({
+                    taskId: id,
+                    taskStatus: data.status,
+                    shortResult: data.status === 'ready'
+                        ? data.short_result
+                        : (data.status === 'failed' ? data.error : null)
+                });
+
+                if (session.taskId === id && session.taskStatus !== data.status) {
+                    if (data.status === 'ready') {
+                        session.taskStatus = 'ready';
+                        session.shortResult = data.short_result || 'Анализ успешно завершен.';
+                        sessionUpdated = true;
+                    } else if (data.status === 'failed') {
+                        session.taskStatus = 'failed';
+                        session.shortResult = data.error || 'Ошибка при выполнении расчетов.';
+                        sessionUpdated = true;
+                    } else if (data.status === 'cancelled') {
+                        session.taskStatus = 'cancelled';
+                        sessionUpdated = true;
+                    }
+                }
+
+                if (['ready', 'failed', 'cancelled'].includes(data.status)) {
+                    anyFinished = true;
                 }
             }
 
-            if (data.status === 'ready' || data.status === 'failed' ||
-                data.status === 'cancelled') {
-                updateConnectionIndicator('online');
-                renderAnalysisTaskControl();
-                if (getDispatcherView().isDispatcherMode) viewInDispatcher();
-                pollingTimeoutsMap.delete(taskId);
-                saveToLocalStorage();
-                return;
+            updateConnectionIndicator('online');
+
+            // 1. Сначала проверяем, остались ли активные задачи ИМЕННО на этом сервере
+            const hasRemaining = dView.tasks.some(
+                t => t.serverUrl.replace(/\/+$/, '') === serverUrl && activeStatuses.includes(t.taskStatus)
+            ) || (
+                session.taskId &&
+                activeStatuses.includes(session.taskStatus) &&
+                (session.defaultServer || '').replace(/\/+$/, '') === serverUrl
+            );
+
+            // 2. Сначала обновляем/очищаем таймер, и ТОЛЬКО ПОТОМ перерисовываем UI!
+            if (hasRemaining) {
+                scheduleBatchPoll(serverUrl, 500);
+            } else {
+                batchPollTimers.delete(serverUrl);
             }
 
-            updateConnectionIndicator('online');
-            startPolling(taskId, serverUrl, 500);
+            if (anyFinished || sessionUpdated) {
+                renderAnalysisTaskControl();
+                if (dView.isDispatcherMode) viewInDispatcher();
+                saveToLocalStorage();
+            }
+
 
         } catch (error) {
             updateConnectionIndicator('offline');
-            startPolling(taskId, serverUrl, 500);
+            scheduleBatchPoll(serverUrl, 1000);
         }
-    }, 500);
+    }, delay);
 
-    pollingTimeoutsMap.set(taskId, timeoutId);
+    batchPollTimers.set(serverUrl, timeoutId);
 }
 
 /**
@@ -96,12 +144,6 @@ export async function cancelAnalysisTaskById(targetTaskId) {
     if (!task) return;
 
     if (!confirm(`Вы уверены, что хотите отменить задачу \"${task.typeName}\"?`)) return;
-
-    // Останавливаем поллинг для отменяемой задачи
-    if (pollingTimeoutsMap.has(targetTaskId)) {
-        clearTimeout(pollingTimeoutsMap.get(targetTaskId));
-        pollingTimeoutsMap.delete(targetTaskId);
-    }
 
     const serverUrl = task.serverUrl;
     updateConnectionIndicator('loading');
@@ -255,7 +297,7 @@ function initActiveTasksPolling() {
     const activeStatuses = ['active', 'processing', 'pending'];
 
     dView.tasks.forEach(t => {
-        if (activeStatuses.includes(t.taskStatus) && !pollingTimeoutsMap.has(t.taskId)) {
+        if (activeStatuses.includes(t.taskStatus)) {
             console.log(`[Dispatcher] Автозапуск поллинга для незавершенной задачи: ${t.taskId}`);
             startPolling(t.taskId, t.serverUrl);
         }
@@ -276,8 +318,8 @@ export function clearAllDispatcherTasks() {
         'Вы уверены, что хотите полностью очистить историю фоновых задач? Активные таймеры опроса будут остановлены.');
 
     if (confirmed) {
-        pollingTimeoutsMap.forEach((timeoutId) => clearTimeout(timeoutId));
-        pollingTimeoutsMap.clear();
+        batchPollTimers.forEach((timeoutId) => clearTimeout(timeoutId));
+        batchPollTimers.clear();
         dView.tasks = [];
 
         const session = getAnalysisSession();
@@ -405,12 +447,39 @@ export function closeDetailedResult() {
 
 
 // ** ОБНОВЛЕНИЕ СОСТОЯНИЕ КЛАСТЕРА **
-let clusterStatusInterval = null;
+let clusterStatusTimeout = null;
+
 function stopClusterStatusPolling() {
-    if (clusterStatusInterval) {
-        clearInterval(clusterStatusInterval);
-        clusterStatusInterval = null;
+    if (clusterStatusTimeout) {
+        clearTimeout(clusterStatusTimeout);
+        clusterStatusTimeout = null;
     }
+}
+
+function startClusterStatusPolling() {
+    stopClusterStatusPolling();
+
+    const poll = async () => {
+        if (!getDispatcherView().isDispatcherMode) {
+            stopClusterStatusPolling();
+            return;
+        }
+
+        // Если вкладка свернута — не нагружаем сеть, проверяем реже (раз в 5 сек)
+        if (document.hidden) {
+            clusterStatusTimeout = setTimeout(poll, 5000);
+            return;
+        }
+
+        await refreshClusterStatus();
+
+        // Планируем следующий запрос только ПОСЛЕ завершения текущего
+        if (getDispatcherView().isDispatcherMode) {
+            clusterStatusTimeout = setTimeout(poll, 1000);
+        }
+    };
+
+    poll();
 }
 
 /**
@@ -497,13 +566,11 @@ export async function refreshClusterStatus() {
     }
 }
 
-function startClusterStatusPolling() {
-    stopClusterStatusPolling();
-    refreshClusterStatus();
-    clusterStatusInterval = setInterval(refreshClusterStatus, 500);
-}
 
 
+/**
+ * @brief Аккуратно обновляет текущее состояние веб-воркера для помощи серверу.
+ */
 function updateWebWorkerControlIfNeeded(container) {
     if (document.activeElement && document.activeElement.id === 'ww-slots-input') {
         return;

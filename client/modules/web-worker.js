@@ -15,7 +15,8 @@ const workerState = {
     wasmCdnUrl: '',
     pool: [],
     hbIntervalMs: 2000,
-    blobUrl: null
+    blobUrl: null,
+    wasmModule: null
 };
 
 export function getWebWorkerState() {
@@ -35,15 +36,26 @@ export function setWebWorkerSlots(val) {
 function buildWorkerBlobUrl(cdnUrl) {
     const pySetup = [
         'import os, sys, io, json, time, traceback, types, numba',
+        'import numpy as np',
         'from numba import njit',
         '@njit(fastmath=True)',
-        'def _k(n):',
-        '    a = 0.0',
-        '    for i in range(1, n): a += (i * 0.5) / (i % 7 + 1.0) - (a * 1e-9)',
-        '    return a',
+        'def _k(arr, value):',
+        '    count = 0.0',
+        '    for i in arr:',
+        '        for j in arr:',
+        '            for k in arr:',
+        '                count += (i * j * k) / value',
+        '    return count',
         'def _bench():',
-        '    _k(10); t = time.time(); _k(20_000_000)',
-        '    return int(40 / max(time.time() - t, 0.001))',
+        '    data = np.random.RandomState(42).randint(1, 101, size=400).astype(np.int32)',
+        '    t0 = time.time()',
+        '    _k(data, 1.0)',
+        '    t1 = time.time()',
+        '    _k(data, 16.0)',
+        '    t2 = time.time()',
+        '    run_s = max(t2 - t1, 0.001)',
+        '    comp_s = max((t1 - t0) - run_s, 0.001)',
+        '    return int(100.0 / (run_s + 0.15 * comp_s))',
         'def _run(code, raw):',
         '    old, buf = sys.stdout, io.StringIO()',
         '    sys.stdout = buf',
@@ -67,7 +79,10 @@ function buildWorkerBlobUrl(cdnUrl) {
       self.onmessage = async ({ data: m }) => {
         if (m.type === 'init') {
           try {
-            pyjs = await createModule({ locateFile: p => '${cdnUrl}/' + p });
+            pyjs = await createModule({
+              locateFile: p => '${cdnUrl}/' + p,
+              ...(m.wasmModule ? { wasmModule: m.wasmModule } : {})
+            });
             await pyjs.bootstrap_from_empack_packed_environment('${
         cdnUrl}/empack_env_meta.json', '${cdnUrl}', false);
             pyjs.exec('import os, numba');
@@ -76,7 +91,9 @@ function buildWorkerBlobUrl(cdnUrl) {
               await pyjs.loadDynamicLibrary(so, { loadAsync: true, global: true, nodelete: true });
             }
             pyjs.exec(${JSON.stringify(pySetup)});
-            self.postMessage({ type: 'ready', score: pyjs.eval('_bench()') });
+            // Запускаем бенчмарк ТОЛЬКО если передан флаг runBench (для нулевого слота)
+            const score = m.runBench ? pyjs.eval('_bench()') : 0;
+            self.postMessage({ type: 'ready', score });
           } catch (err) {
             self.postMessage({ type: 'init_error', error: String(err) });
           }
@@ -94,6 +111,19 @@ function buildWorkerBlobUrl(cdnUrl) {
       };
     `;
     return URL.createObjectURL(new Blob([workerCode], {type: 'application/javascript'}));
+}
+
+let cachedBlobKey = '';
+let cachedBlobUrl = null;
+
+function getWorkerBlobUrl(cdnUrl) {
+    if (cachedBlobUrl && cachedBlobKey === cdnUrl) {
+        return cachedBlobUrl;
+    }
+    if (cachedBlobUrl) URL.revokeObjectURL(cachedBlobUrl);
+    cachedBlobKey = cdnUrl;
+    cachedBlobUrl = buildWorkerBlobUrl(cdnUrl);
+    return cachedBlobUrl;
 }
 
 async function apiPost(path, payload) {
@@ -122,7 +152,8 @@ function spawnSlot(idx) {
             w.terminate();
             reject(new Error(err.message || 'Ошибка загрузки скрипта воркера'));
         };
-        w.postMessage({type: 'init'});
+        // Передаем runBench: true только для первого слота (idx === 0)
+        w.postMessage({type: 'init', runBench: idx === 0, wasmModule: workerState.wasmModule});
     });
 }
 
@@ -173,18 +204,32 @@ export async function startBrowserWorker() {
     notifyUi();
 
     try {
-        if (workerState.blobUrl) URL.revokeObjectURL(workerState.blobUrl);
-        workerState.blobUrl = buildWorkerBlobUrl(workerState.wasmCdnUrl);
+        workerState.blobUrl = getWorkerBlobUrl(workerState.wasmCdnUrl);
+
+        // Компилируем WASM-ядро ОДИН РАЗ в главном потоке перед запуском слотов
+        if (!workerState.wasmModule && WebAssembly.compileStreaming) {
+            try {
+                workerState.wasmModule = await WebAssembly.compileStreaming(
+                    fetch(`${workerState.wasmCdnUrl}/pyjs_runtime_browser.wasm`)
+                );
+            } catch (_) {
+                workerState.wasmModule = null;
+            }
+        }
 
         const n = workerState.slots;
-        const inits = await Promise.all(Array.from({length: n}, (_, i) => spawnSlot(i)));
+
+
+        // 1. Сначала поднимаем ТОЛЬКО нулевой слот (он прогреет кэш и посчитает бенчмарк без
+        // конкуренции за CPU)
+        const first = await spawnSlot(0);
         if (workerState.status !== 'loading') {
-            inits.forEach(x => x.slot.w.terminate());
+            first.slot.w.terminate();
             return;
         }
 
-        workerState.pool = inits.map(x => x.slot);
-        const totalScore = (inits[0]?.score || 500) * n;
+        workerState.pool = [first.slot];
+        const totalScore = (first.score || 500) * n;
         const ramMb = (navigator.deviceMemory || 4) * 1024;
 
         const reg = await apiPost('/worker/register', {
@@ -200,8 +245,25 @@ export async function startBrowserWorker() {
         workerState.status = 'running';
         notifyUi();
 
+        // Сразу запускаем работу на 1-м слоте!
         runHeartbeatLoop(n, ramMb, totalScore);
         runPullLoop(ramMb);
+
+        // 2. Остальные слоты (1 .. n-1) поднимаем в фоне (уже из прогретого кэша) и добавляем в пул
+        if (n > 1) {
+            Promise.all(Array.from(
+                {length: n - 1},
+                (_, i) => spawnSlot(i + 1)
+                              .then(res => {
+                                  if (workerState.status === 'running') {
+                                      workerState.pool.push(res.slot);
+                                  } else {
+                                      res.slot.w.terminate();
+                                  }
+                              })
+                              .catch(() => {})));
+        }
+
     } catch (err) {
         console.error('[WebWorker] Ошибка старта:', err);
         workerState.status = 'error';

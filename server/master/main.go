@@ -103,6 +103,38 @@ func (mc *MasterCluster) registerRoutes(mux *http.ServeMux) {
 		writeJSON(w, 200, resp)
 	})
 
+	// Пакетно проверяет статусы нескольких задач за один запрос
+	mux.HandleFunc("POST /api/v1/check_tasks", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			TaskIDs []string `json:"taskIds"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, 400, map[string]string{"error": "Invalid JSON"})
+			return
+		}
+
+		results := make(map[string]map[string]any, len(req.TaskIDs))
+		mc.mu.RLock()
+		for _, id := range req.TaskIDs {
+			task, ok := mc.tasks[id]
+			if !ok {
+				results[id] = map[string]any{"status": "failed", "error": "Задача не найдена"}
+				continue
+			}
+			resp := map[string]any{"status": task.Status}
+			switch task.Status {
+			case "ready":
+				resp["short_result"] = task.ShortResult
+			case "failed":
+				resp["error"] = task.Error
+			}
+			results[id] = resp
+		}
+		mc.mu.RUnlock()
+
+		writeJSON(w, 200, map[string]any{"tasks": results})
+	})
+
 	// Принудительно отменяет задачу и ставит ее активные чанки в очередь прерывания (AbortQueue)
 	mux.HandleFunc("POST /api/v1/cancel_task", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {

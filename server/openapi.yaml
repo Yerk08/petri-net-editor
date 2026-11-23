@@ -220,6 +220,76 @@ paths:
                   error:
                     type: string
                     example: Задача не найдена
+
+  /api/v1/check_tasks:
+    post:
+      tags:
+        - Client API
+      summary: Пакетная проверка статусов нескольких задач (Batch Polling)
+      description: >
+        Принимает список идентификаторов задач и за один запрос возвращает словарь 
+        их актуальных статусов, кратких результатов или текстов ошибок.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - taskIds
+              properties:
+                taskIds:
+                  type: array
+                  description: Массив идентификаторов проверяемых задач
+                  items:
+                    type: string
+                  example: ["tsk_a1b2c3d4", "tsk_e5f6g7h8"]
+      responses:
+        "200":
+          description: Словарь статусов по переданным идентификаторам задач
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - tasks
+                properties:
+                  tasks:
+                    type: object
+                    description: Объект, где ключом выступает taskId, а значением — состояние задачи
+                    additionalProperties:
+                      type: object
+                      required:
+                        - status
+                      properties:
+                        status:
+                          type: string
+                          enum: [active, ready, failed, cancelled]
+                          example: ready
+                        short_result:
+                          type: string
+                          description: Присутствует, если статус 'ready'
+                          example: Анализ успешно завершен.
+                        error:
+                          type: string
+                          description: Присутствует, если статус 'failed' или задача не найдена
+                          example: Задача не найдена
+                    example:
+                      tsk_a1b2c3d4:
+                        status: ready
+                        short_result: Анализ успешно завершен.
+                      tsk_e5f6g7h8:
+                        status: active
+        "400":
+          description: Некорректный формат тела запроса (Invalid JSON)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Invalid JSON
   
   /api/v1/cancel_task:
     post:
