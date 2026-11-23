@@ -1,4 +1,4 @@
-const CACHE_NAME = 'petri-editor-v1.46'; // МЕНЯЙТЕ ВЕРСИЮ ДЛЯ ОБНОВЛЕНИЯ (v2, v3...)
+const CACHE_NAME = 'petri-editor-v1.47'; // МЕНЯЙТЕ ВЕРСИЮ ДЛЯ ОБНОВЛЕНИЯ (v2, v3...)
 const JIT_CACHE_NAME = 'petri-jit-cache-v1';
 const JIT_TTL_MS = 7 * 86400 * 1000; // 7 дней в миллисекундах
 const JIT_META_KEY = '/__jit_last_used__';
@@ -107,19 +107,3 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
-
-// При старте редактора проверяем, не устарел ли кэш WASM (старше 7 дней)
-(async () => {
-    if (!('caches' in window)) return;
-    const JIT_CACHE = JIT_CACHE_NAME;
-    if (await caches.has(JIT_CACHE)) {
-        const cache = await caches.open(JIT_CACHE);
-        const meta = await cache.match('/__jit_last_used__');
-        if (meta) {
-            const lastUsed = Number(await meta.text());
-            if (Date.now() - lastUsed > JIT_TTL_MS) {
-                await caches.delete(JIT_CACHE);
-            }
-        }
-    }
-})();
