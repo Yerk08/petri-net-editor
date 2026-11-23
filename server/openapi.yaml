@@ -247,9 +247,6 @@ paths:
                   status:
                     type: string
                     example: success
-                  message:
-                    type: string
-                    example: Task cancelled
         "404":
           description: Задача не найдена
       tags:
@@ -630,8 +627,8 @@ components:
           example: chk_112233
         status:
           type: string
-          enum: [success]
-          example: success
+          enum: [ok]
+          example: ok
         executionTimeMs:
           type: integer
           example: 420
