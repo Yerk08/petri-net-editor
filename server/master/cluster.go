@@ -94,7 +94,7 @@ func (mc *MasterCluster) failWorkerChunksLocked(w *WorkerNode, reason string) {
 				ErrorMessage: reason,
 			})
 			if len(task.Pending) == 0 {
-				mc.stepTaskLocked(task, false)
+				go mc.stepTask(task, false)
 			}
 		}
 	}
@@ -111,21 +111,32 @@ func (mc *MasterCluster) finishTaskLocked(t *Task, status, shortRes, htmlRep, er
 	t.Error = errMsg
 	t.FinishedAt = time.Now()
 	if t.LuaState != nil {
-		t.LuaState.Close()
-		t.LuaState = nil
+		// Если вызов из cancel_task, TryLock предотвратит закрытие VM прямо во время Resume
+		if t.mu.TryLock() {
+			t.LuaState.Close()
+			t.LuaState = nil
+			t.mu.Unlock()
+		}
 	}
 }
 
 /**
  * @brief Запускает или возобновляет Lua-корутину задачи, обрабатывает yield с новыми чанками или финал.
- * @note Вызывать строго под блокировкой mc.mu.Lock().
  * @param t Указатель на активную задачу.
  * @param initial Флаг первого запуска (true — инициализация VM, false — возобновление после yield).
  */
-func (mc *MasterCluster) stepTaskLocked(t *Task, initial bool) {
+func (mc *MasterCluster) stepTask(t *Task, initial bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	mc.mu.Lock()
 	if t.Status != "active" {
+		mc.mu.Unlock()
 		return
 	}
+	batchRes := t.BatchRes
+	t.BatchRes = nil
+	mc.mu.Unlock()
 
 	var fn *lua.LFunction
 	var args []lua.LValue
@@ -134,13 +145,17 @@ func (mc *MasterCluster) stepTaskLocked(t *Task, initial bool) {
 		L := newSandboxedLuaState()
 		if err := L.DoString(t.AlgoPkg.LuaCode); err != nil {
 			L.Close()
+			mc.mu.Lock()
 			mc.finishTaskLocked(t, "failed", "", "", err.Error())
+			mc.mu.Unlock()
 			return
 		}
 		mainFn, ok := L.GetGlobal("main").(*lua.LFunction)
 		if !ok {
 			L.Close()
+			mc.mu.Lock()
 			mc.finishTaskLocked(t, "failed", "", "", "функция main не найдена в orchestrator.lua")
+			mc.mu.Unlock()
 			return
 		}
 		thread, _ := L.NewThread()
@@ -149,41 +164,50 @@ func (mc *MasterCluster) stepTaskLocked(t *Task, initial bool) {
 		fn = mainFn
 		args = []lua.LValue{mc.buildLuaContext(L, t)}
 	} else {
-		fn = nil // При возобновлении после yield функция уже в стеке корутины
-		args = []lua.LValue{goToLua(t.LuaState, t.BatchRes)}
-		t.BatchRes = nil
+		args = []lua.LValue{goToLua(t.LuaState, batchRes)}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
 	t.LuaState.SetContext(ctx)
 	state, err, retVals := t.LuaState.Resume(t.LuaThread, fn, args...)
 	cancel()
 
+	// Вспомогательная функция безопасного завершения с закрытием Lua VM под обоими мьютексами
+	failOrFinish := func(status, shortRes, htmlRep, errMsg string) {
+		if t.LuaState != nil {
+			t.LuaState.Close()
+			t.LuaState = nil
+		}
+		mc.mu.Lock()
+		defer mc.mu.Unlock()
+		if t.Status == "active" {
+			mc.finishTaskLocked(t, status, shortRes, htmlRep, errMsg)
+		}
+	}
+
 	if err != nil {
-		mc.finishTaskLocked(t, "failed", "", "", "Lua runtime error: "+err.Error())
+		failOrFinish("failed", "", "", "Lua runtime error: "+err.Error())
 		return
 	}
-
 	if len(retVals) == 0 {
-		mc.finishTaskLocked(t, "failed", "", "", "Lua скрипт завершился без возврата результата")
+		failOrFinish("failed", "", "", "Lua скрипт завершился без возврата результата")
 		return
 	}
-
 	resMap, ok := luaToGo(retVals[0]).(map[string]any)
 	if !ok {
-		mc.finishTaskLocked(t, "failed", "", "", "Lua должен возвращать таблицу {action=...}")
+		failOrFinish("failed", "", "", "Lua должен возвращать таблицу {action=...}")
 		return
 	}
 
 	// Обработка завершения (успех или явная ошибка от алгоритма)
 	if state == lua.ResumeOK {
 		if errStr, hasErr := resMap["error"].(string); hasErr && errStr != "" {
-			mc.finishTaskLocked(t, "failed", "", "", errStr)
+			failOrFinish("failed", "", "", errStr)
 			return
 		}
 		shortRes, _ := resMap["short_result"].(string)
 		htmlRep, _ := resMap["html_report"].(string)
-		mc.finishTaskLocked(t, "ready", shortRes, htmlRep, "")
+		failOrFinish("ready", shortRes, htmlRep, "")
 		log.Printf("[Task] Задача %s успешно завершена", t.ID)
 		return
 	}
@@ -191,11 +215,12 @@ func (mc *MasterCluster) stepTaskLocked(t *Task, initial bool) {
 	// Корутина сделала coroutine.yield({ chunks = { ... } })
 	rawChunks, ok := resMap["chunks"].([]any)
 	if !ok || len(rawChunks) == 0 {
-		mc.finishTaskLocked(t, "failed", "", "", "yield должен содержать непустой массив chunks")
+		failOrFinish("failed", "", "", "yield должен содержать непустой массив chunks")
 		return
 	}
 
-	t.Pending = make(map[string]*Chunk, len(rawChunks))
+	// Формируем объекты чанков ДО захвата общего mc.mu.Lock()
+	newChunks := make([]*Chunk, 0, len(rawChunks))
 	for _, rc := range rawChunks {
 		item, ok := rc.(map[string]any)
 		if !ok {
@@ -213,24 +238,36 @@ func (mc *MasterCluster) stepTaskLocked(t *Task, initial bool) {
 			b, _ := json.Marshal(item["data"])
 			dataStr = string(b)
 		}
-
-		maxExec := 15000 // Дефолт 15 секунд
+		maxExec := 15000
 		if m, ok := item["max_execution_ms"].(float64); ok && m > 0 {
 			maxExec = int(m)
 		}
-
-		ch := &Chunk{
+		newChunks = append(newChunks, &Chunk{
 			ID:             genID("chk_"),
 			TaskID:         t.ID,
 			Tag:            tag,
 			Data:           dataStr,
 			Script:         script,
 			MaxExecutionMs: maxExec,
-		}
+		})
+	}
 
+	// Забираем глобальный мьютекс на микросекунды только для вставки в очередь
+	mc.mu.Lock()
+	defer mc.mu.Unlock()
+	if t.Status != "active" {
+		if t.LuaState != nil {
+			t.LuaState.Close()
+			t.LuaState = nil
+		}
+		return
+	}
+
+	t.Pending = make(map[string]*Chunk, len(newChunks))
+	for _, ch := range newChunks {
 		t.Pending[ch.ID] = ch
 		mc.chunkLookup[ch.ID] = ch
-		mc.queue = append(mc.queue, ch)
 	}
+	mc.queue = append(mc.queue, newChunks...)
 	fmt.Printf("[Task] %s поставила в очередь %d чанков\n", t.ID, len(t.Pending))
 }

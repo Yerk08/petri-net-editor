@@ -80,8 +80,8 @@ export function onServerUrlInput(value) {
  * Безопасно отменяет предыдущий незавершенный запрос через `AbortController` перед отправкой
  * нового. В случае успеха строит HTML-опции для `<select>` и синхронизирует сохраненный выбранный
  * тип. При ошибке сети переходит в отказоустойчивый режим: если в `state` есть сохраненная
- * конфигурация, отображает её, переключая таймер на частые повторные попытки (5 сек) вместо
- * стандартных (30 сек).
+ * конфигурация, отображает её, переключая таймер на частые повторные попытки (2 сек) вместо
+ * стандартных (8 сек).
  *
  * @async
  * @throws {Error} Выбрасывает исключение при не-200 статусе ответа сервера (обрабатывается в
@@ -141,7 +141,7 @@ export async function loadAnalysisTypes() {
             await loadParamSchema(currentSavedTypeId);
         }
 
-        analysisTimeout = setTimeout(() => loadAnalysisTypes(), 30000);
+        analysisTimeout = setTimeout(() => loadAnalysisTypes(), 8000);
 
     } catch (error) {
         if (error.name === 'AbortError') return;
@@ -159,7 +159,7 @@ export async function loadAnalysisTypes() {
             selectEl.innerHTML = '<option value="">Сервер недоступен</option>';
         }
 
-        analysisTimeout = setTimeout(() => loadAnalysisTypes(), 5000);
+        analysisTimeout = setTimeout(() => loadAnalysisTypes(), 2000);
     }
 }
 

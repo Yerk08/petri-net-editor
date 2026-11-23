@@ -77,8 +77,9 @@ func (mc *MasterCluster) registerRoutes(mux *http.ServeMux) {
 
 		mc.mu.Lock()
 		mc.tasks[task.ID] = task
-		mc.stepTaskLocked(task, true)
 		mc.mu.Unlock()
+
+		mc.stepTask(task, true)
 
 		writeJSON(w, 200, map[string]string{"taskId": task.ID})
 	})
@@ -93,9 +94,10 @@ func (mc *MasterCluster) registerRoutes(mux *http.ServeMux) {
 			return
 		}
 		resp := map[string]any{"status": task.Status}
-		if task.Status == "ready" {
+		switch task.Status {
+		case "ready":
 			resp["short_result"] = task.ShortResult
-		} else if task.Status == "failed" {
+		case "failed":
 			resp["error"] = task.Error
 		}
 		writeJSON(w, 200, resp)
@@ -217,43 +219,67 @@ func (mc *MasterCluster) registerRoutes(mux *http.ServeMux) {
 			w.WriteHeader(404)
 			return
 		}
-		if worker.Banned {
-			writeJSON(w, 200, map[string]any{"chunks": []any{}, "retryAfterMs": 60000})
+		if worker.Banned || req.FreeSlots <= 0 || len(mc.queue) == 0 {
+			retry := 500
+			if worker.Banned {
+				retry = 60000
+			}
+			writeJSON(w, 200, map[string]any{"chunks": []any{}, "retryAfterMs": retry})
 			return
 		}
 
+		// Собираем множество активных BFT-тегов воркера за O(ActiveChunks) один раз до цикла
+		activeTags := make(map[string]bool, len(worker.ActiveChunks))
+		for activeID := range worker.ActiveChunks {
+			if act, ok := mc.chunkLookup[activeID]; ok && act.Tag != "" {
+				activeTags[act.TaskID+":"+act.Tag] = true
+			}
+		}
+
 		assigned := make([]map[string]any, 0, req.FreeSlots)
-		rem := make([]*Chunk, 0, len(mc.queue))
-		for _, ch := range mc.queue {
+		writeIdx := 0
+		i := 0
+		for ; i < len(mc.queue); i++ {
+			ch := mc.queue[i]
 			if ch.Completed {
 				continue
 			}
-			// Не выдаем одному воркеру реплики с одинаковым тегом в рамках одной задачи
-			duplicateTag := false
-			if ch.Tag != "" {
-				for activeID := range worker.ActiveChunks {
-					if act, ok := mc.chunkLookup[activeID]; ok && act.TaskID == ch.TaskID && act.Tag == ch.Tag {
-						duplicateTag = true
-						break
-					}
-				}
+			tagKey := ch.TaskID + ":" + ch.Tag
+			if ch.Tag != "" && activeTags[tagKey] {
+				mc.queue[writeIdx] = ch
+				writeIdx++
+				continue
 			}
-			if len(assigned) < req.FreeSlots && !duplicateTag {
-				ch.AssignedTo = worker.ID
-				worker.ActiveChunks[ch.ID] = true
-				assigned = append(assigned, map[string]any{
-					"chunkId":        ch.ID,
-					"taskId":         ch.TaskID,
-					"script":         ch.Script,
-					"data":           ch.Data,
-					"maxExecutionMs": ch.MaxExecutionMs,
-				})
-			} else {
-				rem = append(rem, ch)
+
+			ch.AssignedTo = worker.ID
+			worker.ActiveChunks[ch.ID] = true
+			if ch.Tag != "" {
+				activeTags[tagKey] = true
+			}
+			assigned = append(assigned, map[string]any{
+				"chunkId":        ch.ID,
+				"taskId":         ch.TaskID,
+				"script":         ch.Script,
+				"data":           ch.Data,
+				"maxExecutionMs": ch.MaxExecutionMs,
+			})
+
+			// Как только слоты заполнены — копируем остаток очереди одним блоком и выходим
+			if len(assigned) == req.FreeSlots {
+				i++
+				break
 			}
 		}
-		mc.queue = rem
-		writeJSON(w, 200, map[string]any{"chunks": assigned, "retryAfterMs": 2000})
+		if i < len(mc.queue) {
+			writeIdx += copy(mc.queue[writeIdx:], mc.queue[i:])
+		}
+		// Зануляем хвост для сборщика мусора (GC)
+		for j := writeIdx; j < len(mc.queue); j++ {
+			mc.queue[j] = nil
+		}
+		mc.queue = mc.queue[:writeIdx]
+
+		writeJSON(w, 200, map[string]any{"chunks": assigned, "retryAfterMs": 500})
 	})
 
 	// Обновляет таймер жизни воркера и передает команды управления (ban / abortChunkIds)
@@ -331,7 +357,7 @@ func (mc *MasterCluster) registerRoutes(mux *http.ServeMux) {
 			task.BatchRes = append(task.BatchRes, req)
 			// Когда все чанки текущей волны отработали (с успехом или ошибкой) — отдаем в Lua
 			if len(task.Pending) == 0 {
-				mc.stepTaskLocked(task, false)
+				go mc.stepTask(task, false)
 			}
 		}
 		writeJSON(w, 200, map[string]string{"status": "accepted"})
@@ -340,7 +366,7 @@ func (mc *MasterCluster) registerRoutes(mux *http.ServeMux) {
 
 /**
 * @brief HTTP middleware для добавления заголовков Cross-Origin Resource Sharing (CORS).
-*/
+ */
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -356,7 +382,7 @@ func withCORS(next http.Handler) http.Handler {
 
 /**
 * @brief Инициализирует менеджер плагинов, кластер и запускает HTTP-сервер на порту 5000.
-*/
+ */
 func main() {
 	pm := NewPluginManager()
 	if err := pm.LoadAll(AlgorithmsDir); err != nil {

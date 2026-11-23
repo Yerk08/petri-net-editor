@@ -13,16 +13,16 @@ import {getWebWorkerState} from './web-worker.js';
 let pollingTimeoutsMap = new Map();
 
 /**
- * @brief Адаптивный лонг-поллинг (Exponential Backoff) состояния задачи на сервере.
+ * @brief Адаптивный поллинг состояния задачи на сервере.
  * @async
  * @param {string} taskId ID задачи.
  * @param {string} serverUrl URL сервера.
- * @param {number} [currentDelay=500] Задержка опроса.
+ * @param {number} [delay=500] Задержка опроса.
  * @note **Зависимости:** Вызывает `updateConnectionIndicator()` (`analysis.js`) при сбоях. Меняет
  * сессию и реестр через `pushDispatcherTask()` (`state.js`). Триггерит рендеры
  * `renderAnalysisTaskControl()` и `viewInDispatcher()`.
  */
-export function startPolling(taskId, serverUrl, currentDelay = 500) {
+export function startPolling(taskId, serverUrl) {
     if (pollingTimeoutsMap.has(taskId)) {
         clearTimeout(pollingTimeoutsMap.get(taskId));
     }
@@ -71,15 +71,13 @@ export function startPolling(taskId, serverUrl, currentDelay = 500) {
             }
 
             updateConnectionIndicator('online');
-            const nextDelay = Math.min(60000, Math.round(currentDelay * 1.3));
-            startPolling(taskId, serverUrl, nextDelay);
+            startPolling(taskId, serverUrl, 500);
 
         } catch (error) {
             updateConnectionIndicator('offline');
-            const nextDelay = Math.min(60000, Math.round(currentDelay * 1.5));
-            startPolling(taskId, serverUrl, nextDelay);
+            startPolling(taskId, serverUrl, 500);
         }
-    }, currentDelay);
+    }, 500);
 
     pollingTimeoutsMap.set(taskId, timeoutId);
 }
@@ -502,7 +500,7 @@ export async function refreshClusterStatus() {
 function startClusterStatusPolling() {
     stopClusterStatusPolling();
     refreshClusterStatus();
-    clusterStatusInterval = setInterval(refreshClusterStatus, 2000);
+    clusterStatusInterval = setInterval(refreshClusterStatus, 500);
 }
 
 

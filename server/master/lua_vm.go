@@ -118,6 +118,8 @@ func (mc *MasterCluster) buildLuaContext(L *lua.LState, t *Task) *lua.LTable {
 	// ctx.strike_worker(workerId) -> увеличивает страйк и банит при превышении глобального лимита
 	ctx.RawSetString("strike_worker", L.NewFunction(func(L *lua.LState) int {
 		wID := L.CheckString(1)
+		mc.mu.Lock()
+		defer mc.mu.Unlock()
 		if w, ok := mc.workers[wID]; ok {
 			w.Strikes++
 			if MaxStrikesBeforeBan > 0 && w.Strikes >= MaxStrikesBeforeBan {

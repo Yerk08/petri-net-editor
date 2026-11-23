@@ -21,13 +21,17 @@ import (
 type PluginManager struct {
 	mu       sync.RWMutex
 	packages map[string]*AlgorithmPackage
+	dirToID  map[string]string
 }
 
 /**
  * @brief Создает новый экземпляр менеджера плагинов.
  */
 func NewPluginManager() *PluginManager {
-	return &PluginManager{packages: make(map[string]*AlgorithmPackage)}
+	return &PluginManager{
+		packages: make(map[string]*AlgorithmPackage),
+		dirToID:  make(map[string]string),
+	}
 }
 
 /**
@@ -52,6 +56,8 @@ func (pm *PluginManager) LoadAll(dir string) error {
  * @param pkgPath Путь к директории конкретного алгоритма (должна содержать meta.json, orchestrator.lua и worker_algo.py).
  */
 func (pm *PluginManager) LoadPackage(pkgPath string) error {
+	pkgPath = filepath.Clean(pkgPath)
+
 	metaBytes, err := os.ReadFile(filepath.Join(pkgPath, "meta.json"))
 	if err != nil {
 		return err
@@ -80,6 +86,12 @@ func (pm *PluginManager) LoadPackage(pkgPath string) error {
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
+
+	// Если у этой папки раньше был другой ID (например, поменяли id в meta.json), удаляем старый
+	if oldID, exists := pm.dirToID[pkgPath]; exists && oldID != meta.ID {
+		delete(pm.packages, oldID)
+	}
+
 	ver := 1
 	if old, ok := pm.packages[meta.ID]; ok {
 		ver = old.Version + 1
@@ -87,8 +99,26 @@ func (pm *PluginManager) LoadPackage(pkgPath string) error {
 	pm.packages[meta.ID] = &AlgorithmPackage{
 		Meta: meta, Version: ver, LuaCode: string(luaBytes), WorkerScript: string(pyBytes),
 	}
+	pm.dirToID[pkgPath] = meta.ID
+
 	log.Printf("[PluginManager] Загружен пакет '%s' (v%d)", meta.ID, ver)
 	return nil
+}
+
+/**
+ * @brief Удаляет пакет алгоритма по пути к его директории.
+ */
+func (pm *PluginManager) UnloadPackage(pkgPath string) {
+	pkgPath = filepath.Clean(pkgPath)
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	if id, ok := pm.dirToID[pkgPath]; ok {
+		delete(pm.packages, id)
+		delete(pm.dirToID, pkgPath)
+		log.Printf("[PluginManager] Удален пакет '%s'", id)
+	}
 }
 
 /**
@@ -96,6 +126,7 @@ func (pm *PluginManager) LoadPackage(pkgPath string) error {
  * @param dir Путь к отслеживаемой директории плагинов.
  */
 func (pm *PluginManager) Watch(dir string) {
+	dir = filepath.Clean(dir)
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return
@@ -110,18 +141,43 @@ func (pm *PluginManager) Watch(dir string) {
 	})
 
 	for event := range watcher.Events {
-		if event.Has(fsnotify.Create) {
-			if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
-				_ = watcher.Add(event.Name)
+		eventPath := filepath.Clean(event.Name)
+		parentDir := filepath.Dir(eventPath)
+
+		// 1. Обработка удаления или перемещения
+		if event.Has(fsnotify.Remove) || event.Has(fsnotify.Rename) {
+			// Если удалена/перемещена сама директория пакета (лежит прямо в корне dir)
+			if parentDir == dir {
+				_ = watcher.Remove(eventPath)
+				pm.UnloadPackage(eventPath)
+				continue
+			}
+			// Если удален файл внутри директории пакета — пробуем перезагрузить;
+			// если обязательного файла больше нет, выгружаем пакет целиком
+			if parentDir != "." && filepath.Dir(parentDir) == dir {
 				time.Sleep(100 * time.Millisecond)
-				_ = pm.LoadPackage(event.Name)
+				if err := pm.LoadPackage(parentDir); err != nil {
+					pm.UnloadPackage(parentDir)
+				}
 				continue
 			}
 		}
-		if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) || event.Has(fsnotify.Rename) {
-			if pkgDir := filepath.Dir(event.Name); pkgDir != dir {
+
+		// 2. Обработка создания новой папки
+		if event.Has(fsnotify.Create) {
+			if info, err := os.Stat(eventPath); err == nil && info.IsDir() {
+				_ = watcher.Add(eventPath)
 				time.Sleep(100 * time.Millisecond)
-				_ = pm.LoadPackage(pkgDir)
+				_ = pm.LoadPackage(eventPath)
+				continue
+			}
+		}
+
+		// 3. Обработка изменения или создания файлов внутри существующего пакета
+		if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
+			if parentDir != dir && filepath.Dir(parentDir) == dir {
+				time.Sleep(100 * time.Millisecond)
+				_ = pm.LoadPackage(parentDir)
 			}
 		}
 	}

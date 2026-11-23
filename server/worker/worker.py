@@ -107,7 +107,7 @@ class Worker:
 
     def __init__(self):
         self.worker_id = None
-        self.hb_interval = 3.0
+        self.hb_interval = 2.0
         self.running = True
         self.lock = threading.Lock()
         self.active_tasks = {}
@@ -391,7 +391,7 @@ class Worker:
                             threading.Thread(
                                 target=self.execute_chunk, args=(ch,), daemon=True
                             ).start()
-                        time.sleep(res.get("retryAfterMs", 2000) / 1000.0)
+                        time.sleep(res.get("retryAfterMs", 500) / 1000.0)
                     except Exception:
                         time.sleep(2)
                 else:

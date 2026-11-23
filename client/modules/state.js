@@ -39,7 +39,7 @@ let simulation = {
  */
 let analysisSession = {
     isAnalysisMode: false,    ///< Флаг активного режима анализа
-    defaultServer: '',        ///< Сервер для запросов по умолчанию (сохраняется)
+    defaultServer: 'https://petricalc.duckdns.org/',        ///< Сервер для запросов по умолчанию (сохраняется)
     isMarkingSetMode: false,  ///< Флаг режима задания разметки
     isColorSetMode: false,    ///< Флаг режима задания цветов
     selectedElement: null,    ///< Выбранный элемент для установки значения

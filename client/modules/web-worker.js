@@ -14,7 +14,7 @@ const workerState = {
     masterUrl: '',
     wasmCdnUrl: '',
     pool: [],
-    hbIntervalMs: 3000,
+    hbIntervalMs: 2000,
     blobUrl: null
 };
 
@@ -196,7 +196,7 @@ export async function startBrowserWorker() {
         });
 
         workerState.workerId = reg.workerId;
-        workerState.hbIntervalMs = reg.heartbeatIntervalMs || 3000;
+        workerState.hbIntervalMs = reg.heartbeatIntervalMs || 2000;
         workerState.status = 'running';
         notifyUi();
 
@@ -262,7 +262,7 @@ async function runPullLoop(ramMb) {
         const free = workerState.pool.filter(s => !s.busy);
         if (free.length > 0 && workerState.workerId) {
             try {
-                const {chunks = [], retryAfterMs = 2000} = await apiPost('/worker/pull', {
+                const {chunks = [], retryAfterMs = 500} = await apiPost('/worker/pull', {
                     workerId: workerState.workerId,
                     freeSlots: free.length,
                     availableRamMb: ramMb
@@ -331,7 +331,7 @@ async function runPullLoop(ramMb) {
                 });
                 await new Promise(r => setTimeout(r, retryAfterMs));
             } catch (_) {
-                await new Promise(r => setTimeout(r, 2000));
+                await new Promise(r => setTimeout(r, 500));
             }
         } else {
             await new Promise(r => setTimeout(r, 300));

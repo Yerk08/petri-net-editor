@@ -7,6 +7,7 @@ package main
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"sync"
 	"time"
 
 	lua "github.com/yuin/gopher-lua"
@@ -19,9 +20,9 @@ const (
 	/** @brief Директория хранения пакетов алгоритмов (плагинов). */
 	AlgorithmsDir = "./algorithms"
 	/** @brief Рекомендуемый интервал отправки heartbeat-сигналов воркерами (в миллисекундах). */
-	HeartbeatIntervalMs = 3000
+	HeartbeatIntervalMs = 2000
 	/** @brief Таймаут неактивности воркера, после которого его аренда чанков истекает (в миллисекундах). */
-	LeaseTimeoutMs = 20000
+	LeaseTimeoutMs = 8000
 	/** @brief Время хранения завершенных задач в оперативной памяти до очистки (в минутах). @warning Увеличить при длительных вычислениях. */
 	MaxTimeRememberMinutes = 240
 	/** @brief Максимальное количество BFT-страйков до перманентной блокировки воркера. */
@@ -165,4 +166,6 @@ type Task struct {
 	Error string
 	/** @brief Метка времени завершения задачи (используется для очистки по TTL). */
 	FinishedAt time.Time
+	/** @brief Локальный мьютекс синхронизации lua-оркестратора.*/
+	mu sync.Mutex
 }
