@@ -181,12 +181,8 @@ export function viewInDispatcher() {
         cancelled: '🚫 Отменено'
     };
 
-    const statusColors = {
-        active: '#fff3cd',
-        ready: '#d4edda',
-        failed: '#f8d7da',
-        cancelled: '#e2e3e5'
-    };
+    const statusColors =
+        {active: '#fff3cd', ready: '#d4edda', failed: '#f8d7da', cancelled: '#e2e3e5'};
 
     let tasksHtml =
         dView.tasks
@@ -199,14 +195,17 @@ export function viewInDispatcher() {
                 <div class="dispatcher-task-info" style="min-width: 0; flex: 1;" onclick="window.openDetailedResult('${
                     t.taskId}', '${t.serverUrl}')">
                     <div class="dispatcher-task-meta" style="margin-bottom: 4px; font-size: 0.9em;">
-                        <b>${statusText}</b> <span class="dispatcher-task-time" style="color: #555;">[${t.timestamp}]</span>
+                        <b>${
+                    statusText}</b> <span class="dispatcher-task-time" style="color: #555;">[${
+                    t.timestamp}]</span>
                     </div>
                     <div class="dispatcher-task-title" style="font-weight: 600; line-height: 1.3; word-break: break-word; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
                         ${t.typeName}
                     </div>
                     ${
                     t.shortResult ?
-                        `<div class="dispatcher-task-result" style="margin-top: 6px;"><h3 style="margin: 0; font-size: 0.95em; font-weight: normal;">${t.shortResult}</h3></div>` :
+                        `<div class="dispatcher-task-result" style="margin-top: 6px;"><h3 style="margin: 0; font-size: 0.95em; font-weight: normal;">${
+                            t.shortResult}</h3></div>` :
                         ''}
                 </div>
                 <div class="dispatcher-task-actions">
@@ -417,11 +416,12 @@ function stopClusterStatusPolling() {
 }
 
 /**
- * @brief Запрашивает состояние вычислительного кластера с текущего сервера и обновляет виджет в правой панели.
+ * @brief Запрашивает состояние вычислительного кластера с текущего сервера и обновляет виджет в
+ * правой панели.
  * @async
- * @note **Зависимости:** Читает адрес сервера из `getAnalysisSession().defaultServer` и проверяет 
- * режим диспетчера через `getDispatcherView()` (`state.js`). Обращается к эндпоинту 
- * `/api/v1/cluster_status`, монтирует сводку в DOM-элемент `#properties-panel` или останавливает 
+ * @note **Зависимости:** Читает адрес сервера из `getAnalysisSession().defaultServer` и проверяет
+ * режим диспетчера через `getDispatcherView()` (`state.js`). Обращается к эндпоинту
+ * `/api/v1/cluster_status`, монтирует сводку в DOM-элемент `#properties-panel` или останавливает
  * фоновый опрос через `stopClusterStatusPolling()` при закрытии Диспетчера.
  */
 export async function refreshClusterStatus() {
@@ -442,17 +442,32 @@ export async function refreshClusterStatus() {
         return;
     }
 
+    // Инициализируем раздельные слоты в DOM только один раз
+    let statusContainer = document.getElementById('cluster-status-container');
+    let workerContainer = document.getElementById('web-worker-control-container');
+
+    if (!statusContainer || !workerContainer) {
+        panel.innerHTML = `
+            <div id="cluster-status-container"></div>
+            <div id="web-worker-control-container"></div>
+        `;
+        statusContainer = document.getElementById('cluster-status-container');
+        workerContainer = document.getElementById('web-worker-control-container');
+    }
+
+    updateWebWorkerControlIfNeeded(workerContainer);
+
     try {
         const res = await fetch(`${serverUrl}/api/v1/cluster_status`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
 
         const ramGb = (data.totalRamMb / 1024).toFixed(1);
-        const availabilityBadge = data.isAvailable
-            ? `<span style="color:#155724; font-weight:bold;">🟢 Готов</span>`
-            : `<span style="color:#856404; font-weight:bold;">🟡 Нет узлов</span>`;
+        const availabilityBadge = data.isAvailable ?
+            `<span style="color:#155724; font-weight:bold;">🟢 Готов</span>` :
+            `<span style="color:#856404; font-weight:bold;">🟡 Нет узлов</span>`;
 
-        panel.innerHTML = `
+        statusContainer.innerHTML = `
             <div class="property-group">
                 <h3>Кластер</h3>
             </div>
@@ -468,9 +483,9 @@ export async function refreshClusterStatus() {
                 <div>📦 Задачи: <b>${data.activeTasksCount}</b></div>
                 <div>🧩 Очередь: <b>${data.queuedChunksCount}</b></div>
             </div>
-        ` + renderWebWorkerControlHtml();
+        `;
     } catch (e) {
-        panel.innerHTML = `
+        statusContainer.innerHTML = `
             <div class="property-group">
                 <h3>Кластер</h3>
             </div>
@@ -490,12 +505,27 @@ function startClusterStatusPolling() {
     clusterStatusInterval = setInterval(refreshClusterStatus, 2000);
 }
 
+
+function updateWebWorkerControlIfNeeded(container) {
+    if (document.activeElement && document.activeElement.id === 'ww-slots-input') {
+        return;
+    }
+
+    const ws = getWebWorkerState();
+    const currentKey = `${ws.status}|${ws.slots}|${ws.workerId}|${ws.completedChunks}|${ws.errorMessage}`;
+
+    if (container.dataset.renderKey === currentKey) {
+        return;
+    }
+
+    container.dataset.renderKey = currentKey;
+    container.innerHTML = renderWebWorkerControlHtml(ws);
+}
+
 /**
  * @brief Формирует HTML-блок управления локальным браузерным воркером для помощи серверу.
  */
-function renderWebWorkerControlHtml() {
-    const ws = getWebWorkerState();
-
+function renderWebWorkerControlHtml(ws = getWebWorkerState()) {
     if (ws.status === 'loading') {
         return `
             <div class="property-group" style="margin-top: 16px;"><h3>Помощь кластеру</h3></div>
@@ -526,7 +556,7 @@ function renderWebWorkerControlHtml() {
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 0.9em;">
                 <label for="ww-slots-input">Потоки (WASM):</label>
                 <input id="ww-slots-input" type="number" min="1" max="16" value="${ws.slots}" 
-                       style="width: 55px; padding: 3px 6px;" onchange="window.setWebWorkerSlots(this.value)">
+                       style="width: 55px; padding: 3px 6px;" oninput="window.setWebWorkerSlots(this.value)">
             </div>
             <button style="width: 100%; background: #2563eb; color: #fff; border: none; padding: 7px; border-radius: 4px; cursor: pointer; font-weight: 600;" 
                     onclick="window.startBrowserWorker()">
