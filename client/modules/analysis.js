@@ -191,6 +191,24 @@ async function loadParamSchema(typeId) {
             const schema = await response.json();
             const currentAnalysis = getAnalysisState();
             currentAnalysis.serverSchema = schema;
+
+            if (!currentAnalysis.params) currentAnalysis.params = {};
+            if (Array.isArray(schema)) {
+                schema.forEach(field => {
+                    if (currentAnalysis.params[field.id] === undefined) {
+                        if (field.type === 'color_filter') {
+                            currentAnalysis.params[field.id] = Object.keys(visibleColors);
+                        } else if (field.type === 'marking_filter') {
+                            const initMarking = {};
+                            getState().places.forEach(p => {
+                                initMarking[p.uuid] = p.initialTokens !== undefined ? p.initialTokens : p.tokens;
+                            });
+                            currentAnalysis.params[field.id] = initMarking;
+                        }
+                    }
+                });
+            }
+
             setAnalysisState(currentAnalysis);
             saveToLocalStorage();
             renderDynamicFields(schema, currentAnalysis);
@@ -505,21 +523,6 @@ export function resetAnalysisMarkingToInitial(fieldId) {
 
     const currentAnalysis = getAnalysisState();
     if (!currentAnalysis.params) currentAnalysis.params = {};
-    if (Array.isArray(schema)) {
-        schema.forEach(field => {
-            if (currentAnalysis.params[field.id] === undefined) {
-                if (field.type === 'color_filter') {
-                    currentAnalysis.params[field.id] = Object.keys(visibleColors);
-                } else if (field.type === 'marking_filter') {
-                    const initMarking = {};
-                    getState().places.forEach(p => {
-                        initMarking[p.uuid] = p.initialTokens !== undefined ? p.initialTokens : p.tokens;
-                    });
-                    currentAnalysis.params[field.id] = initMarking;
-                }
-            }
-        });
-    }
 
     const markingSnapshot = {};
     getState().places.forEach(p => {
