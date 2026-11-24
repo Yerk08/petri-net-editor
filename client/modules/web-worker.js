@@ -428,6 +428,7 @@ async function runHeartbeatLoop(n, ramMb, totalScore) {
                 if (s) {
                     clearTimeout(s.tm);
                     await respawnSlot(s);
+                    wakePullLoop();
                 }
             }
         } catch (_) {
@@ -445,6 +446,30 @@ async function runHeartbeatLoop(n, ramMb, totalScore) {
             }
         }
     }
+}
+
+let wakePullResolver = null;
+
+function wakePullLoop() {
+    if (wakePullResolver) {
+        const resolve = wakePullResolver;
+        wakePullResolver = null;
+        resolve();
+    }
+}
+
+function sleepInterruptible(ms) {
+    return new Promise(resolve => {
+        const tm = setTimeout(() => {
+            if (wakePullResolver === onWake) wakePullResolver = null;
+            resolve();
+        }, ms);
+        const onWake = () => {
+            clearTimeout(tm);
+            resolve();
+        };
+        wakePullResolver = onWake;
+    });
 }
 
 async function runPullLoop(ramMb) {
@@ -475,6 +500,7 @@ async function runPullLoop(ramMb) {
                             errorMessage: 'Browser timeout'
                         }).catch(() => {});
                         await respawnSlot(s);
+                        wakePullLoop();
                     }, limitMs);
                     s.w.onmessage = async ({data: r}) => {
                         if (r.type !== 'res' || r.id !== ch.chunkId) return;
@@ -488,6 +514,7 @@ async function runPullLoop(ramMb) {
                                 errorMessage: 'WASM OOM'
                             }).catch(() => {});
                             await respawnSlot(s);
+                            wakePullLoop();
                             return;
                         }
                         await apiPost(
@@ -510,6 +537,7 @@ async function runPullLoop(ramMb) {
                         workerState.completedChunks++;
                         s.busy = false;
                         s.cid = null;
+                        wakePullLoop();
                         notifyUi();
                     };
                     s.w.postMessage({
@@ -519,12 +547,15 @@ async function runPullLoop(ramMb) {
                         data: typeof ch.data === 'string' ? ch.data : JSON.stringify(ch.data ?? {})
                     });
                 });
-                await new Promise(r => setTimeout(r, retryAfterMs));
+                if (chunks.length === 0) {
+                    await sleepInterruptible(retryAfterMs);
+                }
             } catch (_) {
-                await new Promise(r => setTimeout(r, 500));
+                await sleepInterruptible(500);
             }
         } else {
-            await new Promise(r => setTimeout(r, 300));
+            // Все слоты заняты — спим, но wakePullLoop() мгновенно разбудит при первом submit
+            await sleepInterruptible(500);
         }
     }
 }

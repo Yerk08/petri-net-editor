@@ -176,6 +176,8 @@ class Worker:
         self.lock = threading.Lock()
         self.active_tasks = {}
         self.slot_pool = queue.Queue()
+        self.pull_wakeup = threading.Event()  # Сигнал мгновенного пробуждения pull-цикла
+        self.queue_drained = False            # Флаг исчерпания очереди на мастере
 
         # Запускаем прогретые процессы (после прогрева Numba в бенчмарке!)
         psutil.cpu_percent(interval=None)
@@ -402,6 +404,8 @@ class Worker:
             if slot_broken or not slot.proc.is_alive():
                 slot.kill_and_respawn()
             self.slot_pool.put(slot)
+            if not self.queue_drained:
+                self.pull_wakeup.set()
 
     def run(self):
         """!
@@ -412,11 +416,25 @@ class Worker:
         threading.Thread(target=self.heartbeat_loop, daemon=True).start()
         threading.Thread(target=self.resource_watchdog_loop, daemon=True).start()
 
+        in_flight = 0
+        flight_lock = threading.Lock()
+
+        def _run_and_track(chunk):
+            nonlocal in_flight
+            try:
+                self.execute_chunk(chunk)
+            finally:
+                with flight_lock:
+                    in_flight -= 1
+                if not self.queue_drained:
+                    self.pull_wakeup.set()
+
         try:
             while self.running:
+                self.pull_wakeup.clear()
                 _, avail_ram, cpu_load = get_system_metrics()
-                with self.lock:
-                    free_slots = MAX_CORES - len(self.active_tasks)
+                with flight_lock:
+                    free_slots = MAX_CORES - in_flight
 
                 # Не берем новые задачи, если свободной памяти меньше 256 МБ или CPU забит на 95%+
                 if (
@@ -434,17 +452,30 @@ class Worker:
                                 "availableRamMb": avail_ram,
                             },
                         )
-                        for ch in res.get("chunks", []):
+                        chunks = res.get("chunks", [])
+                        # Если сервер выдал меньше чанков, чем просили — очередь на мастере пуста
+                        self.queue_drained = len(chunks) < free_slots
+
+                        for ch in chunks:
+                            with flight_lock:
+                                in_flight += 1
                             threading.Thread(
-                                target=self.execute_chunk, args=(ch,), daemon=True
+                                target=_run_and_track, args=(ch,), daemon=True
                             ).start()
-                        time.sleep(res.get("retryAfterMs", 500) / 1000.0)
+
+                        # Спим только если очередь исчерпана; иначе сразу идем на следующий pull
+                        if self.queue_drained:
+                            self.pull_wakeup.wait(
+                                timeout=res.get("retryAfterMs", 500) / 1000.0
+                            )
                     except Exception:
-                        time.sleep(2)
+                        self.pull_wakeup.wait(timeout=2.0)
                 else:
-                    time.sleep(0.5)
+                    # Все слоты заняты — ждем освобождения любого слота (или страхующий таймаут 0.3 с)
+                    self.pull_wakeup.wait(timeout=0.3)
         finally:
             self.running = False
+            self.pull_wakeup.set()
             with self.lock:
                 for cid, info in list(self.active_tasks.items()):
                     self.kill_process_tree(info["proc"].pid)
