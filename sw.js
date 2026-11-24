@@ -1,4 +1,4 @@
-const CACHE_NAME = 'petri-editor-v1.48'; // МЕНЯЙТЕ ВЕРСИЮ ДЛЯ ОБНОВЛЕНИЯ (v2, v3...)
+const CACHE_NAME = 'petri-editor-v1.49'; // МЕНЯЙТЕ ВЕРСИЮ ДЛЯ ОБНОВЛЕНИЯ (v2, v3...)
 const JIT_CACHE_NAME = 'petri-jit-cache-v1';
 const JIT_TTL_MS = 7 * 86400 * 1000; // 7 дней в миллисекундах
 const JIT_META_KEY = '/__jit_last_used__';

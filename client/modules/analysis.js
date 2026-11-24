@@ -379,7 +379,7 @@ export function toggleAnalysisColorCapture(fieldId) {
             session.backupColors = Object.keys(visibleColors).filter(color => visibleColors[color]);
         }
 
-        const savedColors = currentAnalysis.params[fieldId] || [];
+        const savedColors = currentAnalysis.params[fieldId] || Object.keys(visibleColors);
         Object.keys(visibleColors).forEach(color => {
             visibleColors[color] = savedColors.includes(color);
         });
@@ -460,16 +460,16 @@ export function toggleAnalysisMarkingCapture(fieldId) {
             typeof currentAnalysis.params[fieldId] === 'object') {
             restoreTokensFromSnapshot(currentAnalysis.params[fieldId]);
         } else {
-            // Если сохраненных параметров нет, инициализируем пустую разметку (0 фишек)
-            const emptySnapshot = {};
+            // Инициализируем разметку из начальных фишек позиций
+            const initialSnapshot = {};
             getState().places.forEach(p => {
-                emptySnapshot[p.uuid] = 0;
+                initialSnapshot[p.uuid] = p.initialTokens !== undefined ? p.initialTokens : p.tokens;
             });
 
-            currentAnalysis.params[fieldId] = emptySnapshot;
+            currentAnalysis.params[fieldId] = initialSnapshot;
             setAnalysisState(currentAnalysis);
             saveToLocalStorage();
-            restoreTokensFromSnapshot(emptySnapshot);
+            restoreTokensFromSnapshot(initialSnapshot);
         }
 
         session.selectedElement = fieldId;
@@ -505,6 +505,21 @@ export function resetAnalysisMarkingToInitial(fieldId) {
 
     const currentAnalysis = getAnalysisState();
     if (!currentAnalysis.params) currentAnalysis.params = {};
+    if (Array.isArray(schema)) {
+        schema.forEach(field => {
+            if (currentAnalysis.params[field.id] === undefined) {
+                if (field.type === 'color_filter') {
+                    currentAnalysis.params[field.id] = Object.keys(visibleColors);
+                } else if (field.type === 'marking_filter') {
+                    const initMarking = {};
+                    getState().places.forEach(p => {
+                        initMarking[p.uuid] = p.initialTokens !== undefined ? p.initialTokens : p.tokens;
+                    });
+                    currentAnalysis.params[field.id] = initMarking;
+                }
+            }
+        });
+    }
 
     const markingSnapshot = {};
     getState().places.forEach(p => {
