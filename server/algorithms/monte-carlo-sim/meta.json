@@ -1,0 +1,35 @@
+{
+  "id": "monte_carlo_sim",
+  "name": "Стохастическая симуляция (Метод Монте-Карло)",
+  "schema": [
+    {
+      "id": "transitions",
+      "name": "Переходы сети Петри",
+      "type": "color_filter"
+    },
+    {
+      "id": "initial_marking",
+      "name": "Начальная разметка (M0)",
+      "type": "marking_filter"
+    },
+    {
+      "id": "total_runs",
+      "name": "Общее количество прогонов (например, 10000)",
+      "type": "number"
+    },
+    {
+      "id": "max_steps",
+      "name": "Максимум шагов на один прогон",
+      "type": "number"
+    },
+    {
+      "id": "parallel_chunks",
+      "name": "Количество параллельных чанков для кластера",
+      "type": "number"
+    }
+  ],
+  "config": {
+    "max_execution_ms": 15000,
+    "max_retries": 2
+  }
+}
