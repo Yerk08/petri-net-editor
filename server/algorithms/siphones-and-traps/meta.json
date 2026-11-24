@@ -1,0 +1,16 @@
+{
+  "id": "siphons_and_traps",
+  "name": "Поиск минимальных сифонов и ловушек",
+  "schema": [
+    {
+      "id": "transitions",
+      "name": "Переходы сети Петри",
+      "type": "color_filter"
+    }
+  ],
+  "config": {
+    "max_execution_ms": 15000,
+    "max_retries": 2
+  }
+}
+

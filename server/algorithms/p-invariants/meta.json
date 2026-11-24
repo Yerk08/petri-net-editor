@@ -1,0 +1,16 @@
+{
+  "id": "p_invariants",
+  "name": "Поиск P-инвариантов (y^T * C = 0)",
+  "schema": [
+    {
+      "id": "transitions",
+      "name": "Переходы сети Петри",
+      "type": "color_filter"
+    }
+  ],
+  "config": {
+    "max_execution_ms": 15000,
+    "max_retries": 2
+  }
+}
+
