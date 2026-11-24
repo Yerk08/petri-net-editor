@@ -8,7 +8,7 @@ function main(ctx)
 
     local total_runs = math.max(1, tonumber(ctx.params.total_runs) or 5000)
     local max_steps = math.max(1, tonumber(ctx.params.max_steps) or 500)
-    local num_chunks = math.max(1, min(512, tonumber(ctx.params.parallel_chunks) or 8))
+    local num_chunks = math.max(1, math.min(512, tonumber(ctx.params.parallel_chunks) or 8))
     if num_chunks > total_runs then num_chunks = total_runs end
 
     local max_retries = tonumber(ctx.config.max_retries) or 2
