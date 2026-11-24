@@ -1,6 +1,17 @@
+local function escape_html(str)
+    if str == nil then return "" end
+    return tostring(str)
+        :gsub("&", "&amp;")
+        :gsub("<", "&lt;")
+        :gsub(">", "&gt;")
+        :gsub('"', "&quot;")
+        :gsub("'", "&#39;")
+end
+
 function main(ctx)
     local transitions = ctx.params.transitions
     local initial_marking = ctx.params.initial_marking or {}
+    local places_meta = ctx.params.places or {}
 
     if not transitions or type(transitions) ~= "table" or #transitions == 0 then
         return { error = "Не заданы переходы сети Петри." }
@@ -14,7 +25,6 @@ function main(ctx)
     local max_retries = tonumber(ctx.config.max_retries) or 2
     local timeout_ms = tonumber(ctx.config.max_execution_ms) or 15000
 
-    -- Распределяем прогоны по независимым батчам для воркеров
     local base_runs = math.floor(total_runs / num_chunks)
     local remainder = total_runs % num_chunks
 
@@ -30,7 +40,6 @@ function main(ctx)
         }
     end
 
-    -- Волна Map: параллельный запуск на кластере
     for attempt = 1, max_retries + 1 do
         local batch = {}
         for i = 1, num_chunks do
@@ -40,10 +49,11 @@ function main(ctx)
                     data = {
                         transitions = transitions,
                         initial_marking = initial_marking,
+                        places = places_meta,
                         runs = pending[i].runs,
                         max_steps = max_steps,
                         seed = pending[i].seed,
-                        record_trace = (i == 1) -- Подробную трассу пишем только с 1-го батча
+                        record_trace = (i == 1)
                     },
                     max_execution_ms = timeout_ms
                 })
@@ -66,14 +76,12 @@ function main(ctx)
         end
     end
 
-    -- Проверка, что все батчи собраны
     for i = 1, num_chunks do
         if not pending[i].done or not pending[i].data then
             return { error = "Не удалось завершить все параллельные батчи симуляции." }
         end
     end
 
-    -- Reduce: агрегация статистики со всех воркеров
     local places = pending[1].data.places or {}
     local t_names = pending[1].data.t_names or {}
     local num_p = #places
@@ -85,10 +93,9 @@ function main(ctx)
     local agg_t_firings = {}
     local agg_p_sum = {}
     local agg_p_max = {}
-    local agg_step_hist = {} -- 10 корзин для гистограммы шагов до тупика
-	local agg_compute_ms = 0.0
+    local agg_step_hist = {}
+    local agg_compute_ms = 0.0
     local max_chunk_ms = 0.0
-
 
     for i = 1, num_t do agg_t_firings[i] = 0 end
     for i = 1, num_p do agg_p_sum[i] = 0; agg_p_max[i] = 0 end
@@ -103,26 +110,27 @@ function main(ctx)
         agg_deadlocks = agg_deadlocks + (d.deadlocks or 0)
         agg_total_steps = agg_total_steps + (d.total_steps or 0)
 
-		local c_ms = d.compute_ms or 0
+        local c_ms = d.compute_ms or 0
         agg_compute_ms = agg_compute_ms + c_ms
         if c_ms > max_chunk_ms then max_chunk_ms = c_ms end
 
         for t_i = 1, num_t do
-            agg_t_firings[t_i] = agg_t_firings[t_i] + (d.t_firings[t_i] or 0)
+            agg_t_firings[t_i] = agg_t_firings[t_i] + ((d.t_firings and d.t_firings[t_i]) or 0)
         end
         for p_i = 1, num_p do
-            agg_p_sum[p_i] = agg_p_sum[p_i] + (d.p_sum[p_i] or 0)
-            local m = d.p_max[p_i] or 0
+            agg_p_sum[p_i] = agg_p_sum[p_i] + ((d.p_sum and d.p_sum[p_i]) or 0)
+            local m = (d.p_max and d.p_max[p_i]) or 0
             if m > agg_p_max[p_i] then agg_p_max[p_i] = m end
         end
         for b = 1, 10 do
-            agg_step_hist[b] = agg_step_hist[b] + (d.step_hist[b] or 0)
+            agg_step_hist[b] = agg_step_hist[b] + ((d.step_hist and d.step_hist[b]) or 0)
         end
         if d.trace and #d.trace > 0 then
             sample_trace = d.trace
             sample_trace_deadlock = d.trace_is_deadlock
         end
     end
+
     local deadlock_pct = (agg_runs > 0) and (agg_deadlocks * 100.0 / agg_runs) or 0.0
     local avg_steps = (agg_runs > 0) and (agg_total_steps / agg_runs) or 0.0
 
@@ -131,7 +139,6 @@ function main(ctx)
         agg_runs, agg_deadlocks, deadlock_pct, avg_steps
     )
 
-    -- Генерация SVG-графика распределения шагов до тупика
     local max_hist = 1
     for b = 1, 10 do
         if agg_step_hist[b] > max_hist then max_hist = agg_step_hist[b] end
@@ -144,7 +151,7 @@ function main(ctx)
         local bar_h = math.floor((val / max_hist) * 110)
         local x = (b - 1) * 58 + 20
         local y = 130 - bar_h
-        local range_lbl = string.format("%d-%d", (b - 1) * bucket_size + 1, math.min(max_steps, b * bucket_size))
+        local range_lbl = string.format("%d-%d", (b - 1) * bucket_size, math.min(max_steps, b * bucket_size))
         svg_bars = svg_bars .. string.format([[
             <rect x="%d" y="%d" width="42" height="%d" fill="#e05a47" rx="3"/>
             <text x="%d" y="%d" font-size="10" text-anchor="middle" fill="#333">%d</text>
@@ -154,14 +161,18 @@ function main(ctx)
 
     local deadlock_chart_html = ""
     if agg_deadlocks > 0 then
+        local zero_step_warn = (agg_total_steps == 0)
+            and "<p style='color:#d32f2f; margin-bottom:10px;'><b>Внимание:</b> сеть зашла в тупик на 0-м шаге во всех прогонах. Проверьте начальную разметку M0 и входные дуги переходов.</p>"
+            or ""
         deadlock_chart_html = string.format([[
         <div class="card">
           <h3>Распределение шагов, на которых наступал тупик (Deadlock Histogram)</h3>
+          %s
           <svg width="610" height="160" style="background:#fafafa; border:1px solid #eee; border-radius:6px;">
             <line x1="10" y1="130" x2="600" y2="130" stroke="#ccc"/>
             %s
           </svg>
-        </div>]], svg_bars)
+        </div>]], zero_step_warn, svg_bars)
     else
         deadlock_chart_html = [[
         <div class="card" style="border-left: 4px solid #2e7d32;">
@@ -170,7 +181,6 @@ function main(ctx)
         </div>]]
     end
 
-    -- Таблица и прогресс-бары по переходам
     local max_t_fire = 1
     for i = 1, num_t do
         if agg_t_firings[i] > max_t_fire then max_t_fire = agg_t_firings[i] end
@@ -189,25 +199,23 @@ function main(ctx)
           <td style="width:45%%;">
             <div class="bar-bg"><div class="bar-fill" style="width:%d%%;"></div></div>
           </td>
-        </tr>]], t_names[i], status_badge, cnt, per_run, pct)
+        </tr>]], escape_html(t_names[i]), status_badge, cnt, per_run, pct)
     end
 
-    -- Таблица по позициям (плотность и ограниченность)
     local p_rows = ""
     for i = 1, num_p do
         local mean_tokens = (agg_total_steps > 0) and (agg_p_sum[i] / agg_total_steps) or 0
         local max_tokens = agg_p_max[i]
         p_rows = p_rows .. string.format(
             "<tr><td><b>%s</b></td><td>%.2f</td><td>%d</td></tr>",
-            places[i], mean_tokens, max_tokens
+            escape_html(places[i]), mean_tokens, max_tokens
         )
     end
 
-    -- Сворачиваемый лог репрезентативного прогона
     local trace_lines = ""
     if sample_trace then
         for _, line in ipairs(sample_trace) do
-            trace_lines = trace_lines .. line .. "\n"
+            trace_lines = trace_lines .. escape_html(line) .. "\n"
         end
     else
         trace_lines = "Лог не записан."
@@ -216,28 +224,28 @@ function main(ctx)
     local trace_title = sample_trace_deadlock
         and "Пошаговый лог прогона, приведшего к ТУПИКУ (нажмите, чтобы развернуть)"
         or "Пошаговый лог контрольного прогона (нажмите, чтобы развернуть)"
-
-    local html = string.format([[
+	
+	local html = string.format([[
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><title>Отчет Монте-Карло</title>
 <style>
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; color: #222; background: #f8f9fa; }
-  .kpi-grid { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
-  .kpi { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 14px 20px; min-width: 170px; }
-  .kpi .val { font-size: 24px; font-weight: bold; margin-top: 4px; }
-  .kpi .lbl { font-size: 12px; color: #666; text-transform: uppercase; }
-  .card { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px; }
-  .two-col { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
-  table { width: 100%%; border-collapse: collapse; margin-top: 8px; }
-  th, td { border-bottom: 1px solid #eee; padding: 8px 10px; text-align: left; font-size: 14px; }
-  th { background: #f4f6f8; color: #444; }
-  .bar-bg { background: #edf2f7; border-radius: 4px; height: 14px; width: 100%%; overflow: hidden; }
-  .bar-fill { background: #3182ce; height: 100%%; }
-  .badge.warn { background: #fff3cd; color: #856404; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-left: 6px; }
-  details { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 12px 16px; }
-  summary { cursor: pointer; font-weight: 600; color: #0969da; user-select: none; }
-  pre { background: #1e1e1e; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; max-height: 400px; font-size: 13px; line-height: 1.45; margin-top: 12px; }
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;margin:20px;color:#222;background:#f8f9fa}
+  .kpi-grid{display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap}
+  .kpi{background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:14px 20px;min-width:170px}
+  .kpi .val{font-size:24px;font-weight:bold;margin-top:4px}
+  .kpi .lbl{font-size:12px;color:#666;text-transform:uppercase}
+  .card{background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:16px 20px;margin-bottom:20px}
+  .two-col{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap}
+  table{width:100%%;border-collapse:collapse;margin-top:8px}
+  th,td{border-bottom:1px solid #eee;padding:8px 10px;text-align:left;font-size:14px}
+  th{background:#f4f6f8;color:#444}
+  .bar-bg{background:#edf2f7;border-radius:4px;height:14px;width:100%%;overflow:hidden}
+  .bar-fill{background:#3182ce;height:100%%}
+  .badge.warn{background:#fff3cd;color:#856404;padding:2px 6px;border-radius:4px;font-size:11px;margin-left:6px}
+  details{background:#fff;border:1px solid #d0d7de;border-radius:8px;padding:12px 16px}
+  summary{cursor:pointer;font-weight:600;color:#0969da;user-select:none}
+  pre{background:#1e1e1e;color:#d4d4d4;padding:14px;border-radius:6px;overflow-x:auto;max-height:400px;font-size:13px;line-height:1.45;margin-top:12px}
 </style>
 </head>
 <body>
@@ -248,7 +256,7 @@ function main(ctx)
     <div class="kpi"><div class="lbl">Вероятность тупика</div><div class="val" style="color:%s;">%.2f%% (%d)</div></div>
     <div class="kpi"><div class="lbl">Средняя длина прогона</div><div class="val">%.1f <span style="font-size:14px;font-weight:normal;">шагов</span></div></div>
     <div class="kpi"><div class="lbl">Параллельных воркеров</div><div class="val">%d</div></div>
-	<div class="kpi">
+    <div class="kpi">
       <div class="lbl">Время вычислений (CPU)</div>
       <div class="val">%.2f <span style="font-size:14px;font-weight:normal;">сек</span></div>
       <div style="font-size:11px;color:#666;margin-top:2px;">самый долгий чанк: %.0f мс</div>
@@ -296,3 +304,4 @@ function main(ctx)
 
     return { short_result = short_res, html_report = html }
 end
+

@@ -657,20 +657,44 @@ export async function submitAnalysisTask() {
     }
 
     updateConnectionIndicator('loading');
+    // Проверка на дубликаты имен позиций
+    const placeNames = getState().places.map(p => p.name);
+    const duplicates = placeNames.filter((name, index) => placeNames.indexOf(name) !== index);
+    
+    if (duplicates.length > 0) {
+        const uniqueDuplicates = [...new Set(duplicates)].join(', ');
+        alert(`Ошибка: обнаружены позиции с одинаковыми названиями (${uniqueDuplicates}). Пожалуйста, переименуйте их перед запуском анализа.`);
+        return;
+    }
+
     const payload = {analysis_type: typeId, params: structuredClone(currentAnalysis.params || {})};
 
     const params = currentAnalysis.params || {};
     const validColors = ['black', 'red', 'blue', 'green'];
+    const placesByUuid = Object.fromEntries(getState().places.map(p => [p.uuid, p.name]));
 
     Object.keys(params).forEach(fieldId => {
         const value = params[fieldId];
+        // 1. Обработка фильтра цветов (как было)
         if (Array.isArray(value) && value.length > 0) {
             const isColorFilter = value.every(item => validColors.includes(item));
             if (isColorFilter) {
                 payload.params[fieldId] = buildTransitionsList(value);
             }
+        } 
+        // 2. Преобразование UUID позиций в их имена для разметки
+        else if (value && typeof value === 'object' && !Array.isArray(value)) {
+            const namedMarking = {};
+            Object.entries(value).forEach(([uuid, tokens]) => {
+                const placeName = placesByUuid[uuid];
+                if (placeName) {
+                    namedMarking[placeName] = tokens;
+                }
+            });
+            payload.params[fieldId] = namedMarking;
         }
     });
+
 
 
     try {
