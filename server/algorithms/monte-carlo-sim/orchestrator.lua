@@ -8,7 +8,7 @@ function main(ctx)
 
     local total_runs = math.max(1, tonumber(ctx.params.total_runs) or 5000)
     local max_steps = math.max(1, tonumber(ctx.params.max_steps) or 500)
-    local num_chunks = math.max(1, math.min(64, tonumber(ctx.params.parallel_chunks) or 8))
+    local num_chunks = math.max(1, min(512, tonumber(ctx.params.parallel_chunks) or 8))
     if num_chunks > total_runs then num_chunks = total_runs end
 
     local max_retries = tonumber(ctx.config.max_retries) or 2
@@ -86,6 +86,9 @@ function main(ctx)
     local agg_p_sum = {}
     local agg_p_max = {}
     local agg_step_hist = {} -- 10 корзин для гистограммы шагов до тупика
+	local agg_compute_ms = 0.0
+    local max_chunk_ms = 0.0
+
 
     for i = 1, num_t do agg_t_firings[i] = 0 end
     for i = 1, num_p do agg_p_sum[i] = 0; agg_p_max[i] = 0 end
@@ -99,6 +102,10 @@ function main(ctx)
         agg_runs = agg_runs + (d.runs or 0)
         agg_deadlocks = agg_deadlocks + (d.deadlocks or 0)
         agg_total_steps = agg_total_steps + (d.total_steps or 0)
+
+		local c_ms = d.compute_ms or 0
+        agg_compute_ms = agg_compute_ms + c_ms
+        if c_ms > max_chunk_ms then max_chunk_ms = c_ms end
 
         for t_i = 1, num_t do
             agg_t_firings[t_i] = agg_t_firings[t_i] + (d.t_firings[t_i] or 0)
@@ -241,6 +248,11 @@ function main(ctx)
     <div class="kpi"><div class="lbl">Вероятность тупика</div><div class="val" style="color:%s;">%.2f%% (%d)</div></div>
     <div class="kpi"><div class="lbl">Средняя длина прогона</div><div class="val">%.1f <span style="font-size:14px;font-weight:normal;">шагов</span></div></div>
     <div class="kpi"><div class="lbl">Параллельных воркеров</div><div class="val">%d</div></div>
+	<div class="kpi">
+      <div class="lbl">Время вычислений (CPU)</div>
+      <div class="val">%.2f <span style="font-size:14px;font-weight:normal;">сек</span></div>
+      <div style="font-size:11px;color:#666;margin-top:2px;">самый долгий чанк: %.0f мс</div>
+    </div>
   </div>
 
   %s
@@ -273,6 +285,8 @@ function main(ctx)
         deadlock_pct, agg_deadlocks,
         avg_steps,
         num_chunks,
+        agg_compute_ms / 1000.0,
+        max_chunk_ms,
         deadlock_chart_html,
         t_rows,
         p_rows,

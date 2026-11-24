@@ -1,6 +1,7 @@
 import json
 import numpy as np
 from numba import njit
+import time
 
 
 @njit
@@ -149,9 +150,11 @@ def run_chunk(raw_data: str) -> str:
         for p, w in t.get("outputs", {}).items():
             post[t_i, p_idx[p]] = int(w)
 
+    t0 = time.perf_counter()
     deadlocks, total_steps, t_firings, p_sum, p_max, step_hist = _simulate_mc_numba(
         m0, pre, post, runs, max_steps, seed
     )
+    compute_ms = (time.perf_counter() - t0) * 1000.0
 
     trace, trace_is_deadlock = [], False
     if record_trace:
@@ -170,5 +173,6 @@ def run_chunk(raw_data: str) -> str:
         "p_max": p_max.tolist(),
         "step_hist": step_hist.tolist(),
         "trace": trace,
-        "trace_is_deadlock": trace_is_deadlock
+        "trace_is_deadlock": trace_is_deadlock,
+        "compute_ms": round(compute_ms, 2)
     })
